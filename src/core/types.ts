@@ -144,6 +144,8 @@ export interface DayLog {
   slotsTotal: number
   /** 怒り退店した客数 */
   walkedOut: number
+  /** 強制終了で未接客になった客数 */
+  skippedCustomers?: number
   /** 売上（円） */
   revenue: number
   /** のれん値の変動 */

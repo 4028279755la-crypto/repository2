@@ -83,6 +83,8 @@ export interface ClosingSummary {
   totalSlots: number
   walkedOut: number
   achievedCombos: string[]
+  skippedCustomers: number
+  forceClosed: boolean
 }
 
 /** 提供成功時に画面表示する直近のコンボ情報 */
@@ -127,6 +129,8 @@ interface StoreExtras {
 
   /** 締めフェーズ用サマリー */
   closingSummary: ClosingSummary | null
+  /** 確認モーダル表示中はゲーム時間を停止 */
+  isServicePaused: boolean
 
   // ── Phase 4 ──
   /** 本日の難易度（朝市開始時に確定） */
@@ -162,6 +166,8 @@ interface GameActions {
   cancelCooking: () => void
   timeoutCurrentSlot: () => void
   clearComboFlash: () => void
+  forceCloseDay: () => void
+  setServicePaused: (v: boolean) => void
   confirmClosing: () => void
   confirmNews: () => void
   confirmCriticReview: () => void
@@ -233,8 +239,10 @@ function makeClosingSummary(
   totalSlots: number,
   walkedOut: number,
   achievedCombos: string[] = [],
+  skippedCustomers = 0,
+  forceClosed = false,
 ): ClosingSummary {
-  return { revenue, reputationDelta: repDelta, servedSlots, totalSlots, walkedOut, achievedCombos }
+  return { revenue, reputationDelta: repDelta, servedSlots, totalSlots, walkedOut, achievedCombos, skippedCustomers, forceClosed }
 }
 
 /**
@@ -319,6 +327,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
   // ── Closing state ──
   closingSummary: null,
+  isServicePaused: false,
 
   // ── Phase 4 ──
   todayDifficulty: null,
@@ -409,6 +418,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       dailyCustomersTotal: orders.length,
       dailySlotsTotal: totalSlots,
       closingSummary: makeClosingSummary(0, 0, 0, totalSlots, 0, []),
+      isServicePaused: false,
     })
   },
 
@@ -579,23 +589,49 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     set({ comboFlash: null })
   },
 
+  setServicePaused: (v) => set({ isServicePaused: v }),
+
+  forceCloseDay: () => {
+    const {
+      serviceOrders, currentOrderIdx,
+      dailyRevenue, dailyReputationDelta, dailyServedSlots,
+      dailyWalkedOut, dailyAchievedCombos, dailySlotsTotal,
+    } = get()
+
+    const skippedCustomers = Math.max(0, serviceOrders.length - currentOrderIdx - 1)
+    const newRepDelta = dailyReputationDelta - skippedCustomers
+
+    set({
+      phase: 'closing',
+      cookingSession: null,
+      isServicePaused: false,
+      dailyReputationDelta: newRepDelta,
+      closingSummary: makeClosingSummary(
+        dailyRevenue, newRepDelta, dailyServedSlots, dailySlotsTotal,
+        dailyWalkedOut, dailyAchievedCombos, skippedCustomers, true,
+      ),
+    })
+  },
+
   confirmClosing: () => {
     const {
       run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos,
-      dailyCustomersTotal, dailySlotsTotal, dailyWalkedOut, todayEvent, meta,
+      dailyCustomersTotal, dailySlotsTotal, dailyWalkedOut, todayEvent, meta, closingSummary,
     } = get()
     if (!run) return
 
+    const skippedCustomers = closingSummary?.skippedCustomers ?? 0
     const log = buildDayLog(run, {
       revenue: dailyRevenue,
       reputationDelta: dailyReputationDelta,
-      customersServed: dailyCustomersTotal - dailyWalkedOut,
+      customersServed: dailyCustomersTotal - dailyWalkedOut - skippedCustomers,
       customersTotal: dailyCustomersTotal,
       slotsServed: dailyServedSlots,
       slotsTotal: dailySlotsTotal,
       walkedOut: dailyWalkedOut,
       achievedCombos: dailyAchievedCombos,
       eventId: todayEvent?.id ?? null,
+      skippedCustomers,
     })
     const nextRun = advanceToNextDay(run, log)
 
@@ -745,6 +781,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       dailyAchievedCombos: [],
       dailyCustomersTotal: 0,
       dailySlotsTotal: 0,
+      isServicePaused: false,
     })
   },
 

@@ -64,11 +64,14 @@ export default function OrderTicker() {
   const currentSlotIdx = useGameStore((s) => s.currentSlotIdx)
   const orderStartedAt = useGameStore((s) => s.orderStartedAt)
   const timeoutCurrentSlot = useGameStore((s) => s.timeoutCurrentSlot)
+  const isServicePaused = useGameStore((s) => s.isServicePaused)
 
   const currentOrder = serviceOrders[currentOrderIdx]
   const timeLimit = currentOrder?.timeLimit || ORDER_TIME_MS
   const [remainingMs, setRemainingMs] = useState(timeLimit)
   const timedOut = useRef(false)
+  const isPausedRef = useRef(false)
+  useEffect(() => { isPausedRef.current = isServicePaused }, [isServicePaused])
 
   useEffect(() => {
     if (phase !== 'service') {
@@ -78,6 +81,7 @@ export default function OrderTicker() {
     timedOut.current = false
 
     const tick = () => {
+      if (isPausedRef.current) return
       const r = timeLimit - (Date.now() - orderStartedAt)
       const clamped = Math.max(0, r)
       setRemainingMs(clamped)

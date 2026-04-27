@@ -13,6 +13,7 @@ import SchoolSelectScreen from './SchoolSelectScreen'
 import UnlockScreen from './UnlockScreen'
 import ApprenticeScreen from './ApprenticeScreen'
 import RecordScreen from './RecordScreen'
+import EarlyCloseButton from './EarlyCloseButton'
 import { useGameStore } from '../store/gameStore'
 
 export default function Layout() {
@@ -33,6 +34,7 @@ export default function Layout() {
       <DraftPanel />
       <OrderTicker />
 
+      <EarlyCloseButton />
       {phase === 'news' && <NewsModal />}
       {phase === 'closing' && <ClosingModal />}
       {phase === 'critic_review' && <CriticReview />}

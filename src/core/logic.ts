@@ -209,6 +209,7 @@ export function buildDayLog(
     achievedCombos: string[]
     eventId: string | null
     weather?: Weather
+    skippedCustomers?: number
   },
 ): DayLog {
   return {
@@ -220,6 +221,7 @@ export function buildDayLog(
     slotsServed: data.slotsServed,
     slotsTotal: data.slotsTotal,
     walkedOut: data.walkedOut,
+    skippedCustomers: data.skippedCustomers,
     revenue: data.revenue,
     reputationDelta: data.reputationDelta,
     achievedCombos: data.achievedCombos,

@@ -5,7 +5,7 @@ export default function ClosingModal() {
 
   if (!closingSummary || !run) return null
 
-  const { revenue, reputationDelta, servedSlots, totalSlots, walkedOut, achievedCombos } = closingSummary
+  const { revenue, reputationDelta, servedSlots, totalSlots, walkedOut, achievedCombos, skippedCustomers, forceClosed } = closingSummary
   const repSign = reputationDelta >= 0 ? '+' : ''
   const combos = getAllCombos()
   const comboCounts = achievedCombos.reduce<Record<string, number>>((acc, id) => {
@@ -37,6 +37,9 @@ export default function ClosingModal() {
           />
           {walkedOut > 0 && (
             <Row label="途中退席" value={`${walkedOut} 客`} danger />
+          )}
+          {forceClosed && skippedCustomers > 0 && (
+            <Row label="強制終了による評判" value={`-${skippedCustomers}`} danger />
           )}
           <Row
             label="本日売上"
