@@ -24,6 +24,7 @@ export function defaultMetaState(): MetaState {
       bestReputation: 0,
       discoveredCombos: [],
     },
+    tutorialSeen: false,
   }
 }
 
@@ -91,5 +92,6 @@ function migrate(raw: Partial<MetaState> & { version?: number }): MetaState {
     hiredApprentices: (raw.hiredApprentices as ApprenticeId[]) ?? def.hiredApprentices,
     permanentBuffs: buffs,
     records,
+    tutorialSeen: raw.tutorialSeen ?? false,
   }
 }

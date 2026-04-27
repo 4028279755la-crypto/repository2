@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { MAX_DAY } from '../core/logic'
 import { reputationTier, TIER_LABELS } from '../core/season'
@@ -18,13 +19,41 @@ function ReputationStars({ value }: { value: number }) {
   return (
     <div className="flex gap-0.5">
       {Array.from({ length: 5 }, (_, i) => (
-        <span key={i} className={i < stars ? 'text-[#c0392b]' : 'text-[#c8b89a]'} aria-hidden="true">
-          ★
-        </span>
+        <span key={i} className={i < stars ? 'text-[#c0392b]' : 'text-[#c8b89a]'} aria-hidden="true">★</span>
       ))}
     </div>
   )
 }
+
+/** ターゲット値に向かって 500ms でカウントアップするフック */
+function useCountUp(target: number, durationMs = 500): number {
+  const [displayed, setDisplayed] = useState(target)
+  const fromRef = useRef(target)
+  const animRef = useRef(0)
+
+  useEffect(() => {
+    const from = fromRef.current
+    if (from === target) return
+    const startTime = performance.now()
+    const animate = (now: number) => {
+      const t = Math.min(1, (now - startTime) / durationMs)
+      const eased = 1 - Math.pow(1 - t, 3)
+      setDisplayed(Math.round(from + (target - from) * eased))
+      if (t < 1) {
+        animRef.current = requestAnimationFrame(animate)
+      } else {
+        fromRef.current = target
+      }
+    }
+    cancelAnimationFrame(animRef.current)
+    animRef.current = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [target, durationMs])
+
+  return displayed
+}
+
+interface FloatEntry { id: number; amount: number }
 
 export default function HUD() {
   const { run, meta, phase, dailyRevenue, dailyAchievedCombos } = useGameStore()
@@ -37,6 +66,24 @@ export default function HUD() {
   const comboCount = dailyAchievedCombos.length
   const tier = reputationTier(reputation)
   const totalCombos = run?.comboHistory.length ?? 0
+
+  // Countup animation for revenue
+  const animatedRevenue = useCountUp(phase === 'service' ? dailyRevenue : dailyRevenue)
+
+  // +¥N float labels
+  const [floats, setFloats] = useState<FloatEntry[]>([])
+  const prevRevenue = useRef(dailyRevenue)
+  useEffect(() => {
+    const diff = dailyRevenue - prevRevenue.current
+    if (diff > 0 && phase === 'service') {
+      const id = Date.now() + Math.random()
+      setFloats((f) => [...f, { id, amount: diff }])
+      const t = setTimeout(() => setFloats((f) => f.filter((x) => x.id !== id)), 1300)
+      prevRevenue.current = dailyRevenue
+      return () => clearTimeout(t)
+    }
+    prevRevenue.current = dailyRevenue
+  }, [dailyRevenue, phase])
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-[#2c1a0e] text-[#f5f0e8] shrink-0 border-b-2 border-[#8b4513]">
@@ -59,9 +106,18 @@ export default function HUD() {
 
       <div className="flex items-center gap-5 text-sm">
         {phase === 'service' && (
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <span className="text-[#c8b89a] text-xs">本日売上</span>
-            <span className="font-bold text-[#2ecc71]">¥{dailyRevenue.toLocaleString()}</span>
+            <span className="font-bold text-[#2ecc71]">¥{animatedRevenue.toLocaleString()}</span>
+            {/* +¥N フロートラベル */}
+            {floats.map((f) => (
+              <span
+                key={f.id}
+                className="absolute -top-5 right-0 text-xs font-bold text-[#f0d060] animate-float-up pointer-events-none whitespace-nowrap"
+              >
+                +¥{f.amount.toLocaleString()}
+              </span>
+            ))}
           </div>
         )}
         {phase === 'service' && (

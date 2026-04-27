@@ -8,7 +8,12 @@
     "preferences": ["popular", "seasonal"],
     "orderSlots": [
       { "requiredTags": ["popular", "seasonal"], "baseReward": 650 }
-    ]
+    ],
+    "dialogue": {
+      "onArrive": ["Oh, sushi! Very exciting!", "すごい！本物の寿司だ！", "Let's try!"],
+      "onServe": ["Wonderful! Delicious!", "マジうまい！", "Amazing, thank you!"],
+      "onLeave": ["Perfect experience!", "また来ます！", "So good, bye bye!"]
+    }
   },
   {
     "id": "cus_regular",
@@ -20,7 +25,12 @@
     "orderSlots": [
       { "requiredTags": ["edomae", "red_fish"], "baseReward": 900 },
       { "requiredTags": ["premium", "white_fish"], "baseReward": 1100 }
-    ]
+    ],
+    "dialogue": {
+      "onArrive": ["今日も頼むよ", "いつも通りで", "また来たよ、大将"],
+      "onServe": ["うん、これだよ", "さすが丁寧な仕事だ", "いいねぇ"],
+      "onLeave": ["ごちそうさま", "また来るよ", "満足満足"]
+    }
   },
   {
     "id": "cus_wealthy",
@@ -32,7 +42,12 @@
     "orderSlots": [
       { "requiredTags": ["luxury", "seasonal"], "baseReward": 2200 },
       { "requiredTags": ["premium", "edomae"], "baseReward": 1600 }
-    ]
+    ],
+    "dialogue": {
+      "onArrive": ["最高のものを頼む", "時間は惜しい", "評判は聞いている"],
+      "onServe": ["ふむ、悪くない", "これは本格派だ", "価値があるな"],
+      "onLeave": ["また機会があれば", "及第点だ", "悪くなかった"]
+    }
   },
   {
     "id": "cus_student",
@@ -43,7 +58,12 @@
     "preferences": ["taishu", "popular"],
     "orderSlots": [
       { "requiredTags": ["taishu", "popular", "egg", "sweet", "chewy"], "baseReward": 280 }
-    ]
+    ],
+    "dialogue": {
+      "onArrive": ["腹減った〜！", "バイト代はたいて来ました！", "うまそう〜"],
+      "onServe": ["うまっ！最高！", "これは神コスパ！", "ありがとっす！"],
+      "onLeave": ["ごちそうさまでした！", "また来ます！", "最高でした〜"]
+    }
   },
   {
     "id": "cus_blogger",
@@ -55,6 +75,11 @@
     "orderSlots": [
       { "requiredTags": ["premium", "fusion", "luxury", "edomae"], "baseReward": 1500 },
       { "requiredTags": ["seaweed", "vegetable", "popular"], "baseReward": 800 }
-    ]
+    ],
+    "dialogue": {
+      "onArrive": ["今日もレビュー中です", "ブログのネタ探してます", "お、これはフォトジェニック！"],
+      "onServe": ["これは…記事にします！", "映える！最高です！", "読者に紹介しますね"],
+      "onLeave": ["5つ星確定です！", "フォロワーに紹介します！", "また取材させてください"]
+    }
   }
 ]

@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { useGameStore } from '../store/gameStore'
+import SettingsModal from './SettingsModal'
 
 const MENU = [
   { key: 'start',      label: 'のれんをくぐる', description: 'ラン開始：店舗 → 流派を選んで30日間の挑戦' },
@@ -11,6 +13,7 @@ export default function TitleScreen() {
   const {
     meta, startNewRun, goToUnlockMenu, goToApprenticeMenu, goToRecordMenu,
   } = useGameStore()
+  const [showSettings, setShowSettings] = useState(false)
 
   const handlers: Record<typeof MENU[number]['key'], () => void> = {
     start: startNewRun,
@@ -24,11 +27,18 @@ export default function TitleScreen() {
       {/* 暖簾風ヘッダー */}
       <div className="absolute top-0 left-0 right-0 h-12 bg-[#2c1a0e] flex items-center justify-center border-b-2 border-[#8b4513]">
         <div className="text-[#f0d060] tracking-[0.5em] text-xs">── 寿司ドラフト ──</div>
+        <button
+          onClick={() => setShowSettings(true)}
+          className="absolute right-4 text-[#8b7355] hover:text-[#f0d060] text-lg transition-colors"
+          aria-label="設定を開く"
+        >
+          ⚙️
+        </button>
       </div>
 
       <div className="flex flex-col items-center gap-6 text-[#f5f0e8] mt-8">
         <div className="text-center">
-          <div className="text-6xl mb-2">🍣</div>
+          <div className="text-6xl mb-2 animate-float">🍣</div>
           <h1
             className="text-4xl font-bold tracking-[0.3em] text-[#f0d060]"
             style={{ fontFamily: '"Courier New", monospace', textShadow: '2px 2px 0 #8b4513' }}
@@ -61,6 +71,8 @@ export default function TitleScreen() {
           <span>最高売上 ¥{meta.records.bestRevenue.toLocaleString()} ／ 最高評判 {meta.records.bestReputation}</span>
         </div>
       </div>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </div>
   )
 }

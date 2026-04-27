@@ -12,13 +12,18 @@ const allIngredients = ingredientsData as unknown as Ingredient[]
 // ── サブコンポーネント ────────────────────────────────────────────────────────
 
 function PatienceHearts({ current, max = MAX_PATIENCE }: { current: number; max?: number }) {
+  const ratio = max > 0 ? current / max : 1
+  const face = ratio > 0.66 ? '😊' : ratio > 0.33 ? '😐' : '😤'
   return (
-    <div className="flex gap-0.5" aria-label={`忍耐 ${current}/${max}`}>
-      {Array.from({ length: max }, (_, i) => (
-        <span key={i} className={`text-sm ${i < current ? 'text-[#c0392b]' : 'text-[#5c3d1e]'}`} aria-hidden="true">
-          {i < current ? '❤' : '🖤'}
-        </span>
-      ))}
+    <div className="flex items-center gap-1" aria-label={`忍耐 ${current}/${max}`}>
+      <span className="text-base" aria-hidden="true">{face}</span>
+      <div className="flex gap-0.5">
+        {Array.from({ length: max }, (_, i) => (
+          <span key={i} className={`text-sm ${i < current ? 'text-[#c0392b]' : 'text-[#5c3d1e]'}`} aria-hidden="true">
+            {i < current ? '❤' : '🖤'}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
@@ -69,9 +74,25 @@ export default function OrderTicker() {
   const currentOrder = serviceOrders[currentOrderIdx]
   const timeLimit = currentOrder?.timeLimit || ORDER_TIME_MS
   const [remainingMs, setRemainingMs] = useState(timeLimit)
+  const [dialogue, setDialogue] = useState<string | null>(null)
   const timedOut = useRef(false)
   const isPausedRef = useRef(false)
+  const prevOrderIdx = useRef(-1)
   useEffect(() => { isPausedRef.current = isServicePaused }, [isServicePaused])
+
+  useEffect(() => {
+    if (currentOrderIdx === prevOrderIdx.current) return
+    prevOrderIdx.current = currentOrderIdx
+    if (phase !== 'service' || !currentOrder) return
+    const cust = allCustomers.find((c) => c.id === currentOrder.customerId)
+    const msgs = cust?.dialogue?.onArrive
+    if (msgs && msgs.length > 0) {
+      const msg = msgs[Math.floor(Math.random() * msgs.length)]
+      setDialogue(msg)
+      const t = setTimeout(() => setDialogue(null), 2500)
+      return () => clearTimeout(t)
+    }
+  }, [currentOrderIdx, phase, currentOrder])
 
   useEffect(() => {
     if (phase !== 'service') {
@@ -125,6 +146,11 @@ export default function OrderTicker() {
           <div className="flex items-center gap-2">
             <span className="text-[#c8b89a] text-xs">注文</span>
             <span className="font-bold text-[#f0d060] text-sm">{customer?.name ?? currentOrder.customerId}</span>
+            {dialogue && (
+              <span className="text-xs text-[#f5f0e8] bg-[#5c3d1e]/80 border border-[#8b7355] rounded-lg px-2 py-0.5 animate-fade-in-up">
+                💬 {dialogue}
+              </span>
+            )}
           </div>
           <PatienceHearts current={currentOrder.patience} />
         </div>

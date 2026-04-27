@@ -204,6 +204,8 @@ interface GameActions {
 
   /** メタを永続化 */
   persistMeta: () => void
+  /** チュートリアル閲覧済みにする */
+  markTutorialSeen: () => void
 }
 
 // ── 内部ヘルパー ──────────────────────────────────────────────────────────────
@@ -996,6 +998,14 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
   persistMeta: () => {
     saveMeta(get().meta)
+  },
+
+  markTutorialSeen: () => {
+    set((s) => {
+      const newMeta: MetaState = { ...s.meta, tutorialSeen: true }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
   },
 }))
 

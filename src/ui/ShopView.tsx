@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { INGREDIENT_EMOJI } from '../core/logic'
 import type { Ingredient } from '../core/types'
+import type { ComboFlash } from '../store/gameStore'
 import ingredientsData from '../data/ingredients.json'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
@@ -58,30 +59,52 @@ function WipPlate({ netaIds }: { netaIds: string[] }) {
   )
 }
 
-// ── コンボテロップ ──────────────────────────────────────────────────────────
+// ── コンボテロップ（div overlay） ─────────────────────────────────────────
 
-function ComboFlashOverlay() {
-  const comboFlash = useGameStore((s) => s.comboFlash)
-  const clearComboFlash = useGameStore((s) => s.clearComboFlash)
+const SPARKLE_ANGLES = [0, 60, 120, 180, 240, 300]
 
+function ComboFlashDivOverlay({ flash, onDone }: { flash: ComboFlash; onDone: () => void }) {
   useEffect(() => {
-    if (!comboFlash) return
-    const id = setTimeout(() => clearComboFlash(), COMBO_FLASH_DURATION_MS)
+    const id = setTimeout(onDone, COMBO_FLASH_DURATION_MS)
     return () => clearTimeout(id)
-  }, [comboFlash, clearComboFlash])
-
-  if (!comboFlash) return null
+  }, [flash, onDone])
 
   return (
-    <g transform="translate(240, 110)" aria-live="polite" pointerEvents="none">
-      <rect x="-110" y="-22" width="220" height="44" rx="8" fill="#2c1a0e" stroke="#f0d060" strokeWidth="2" opacity="0.95" />
-      <text x="0" y="-2" textAnchor="middle" fontSize="14" fill="#f0d060" fontWeight="bold">
-        ★ {comboFlash.comboName}
-      </text>
-      <text x="0" y="14" textAnchor="middle" fontSize="11" fill="#c0392b" fontWeight="bold">
-        x{comboFlash.multiplier.toFixed(1)} コンボ成立！
-      </text>
-    </g>
+    <div
+      className="absolute inset-0 flex items-center justify-center pointer-events-none z-20"
+      aria-live="polite"
+    >
+      <div className="relative flex items-center justify-center">
+        {/* Sparkles */}
+        {SPARKLE_ANGLES.map((angle, i) => {
+          const rad = (angle * Math.PI) / 180
+          const x = Math.cos(rad) * 110
+          const y = Math.sin(rad) * 65
+          return (
+            <div
+              key={i}
+              className="absolute animate-sparkle text-2xl select-none"
+              style={{
+                left: `calc(50% + ${x}px)`,
+                top: `calc(50% + ${y}px)`,
+                transform: 'translate(-50%, -50%)',
+                animationDelay: `${i * 55}ms`,
+              }}
+              aria-hidden="true"
+            >
+              ✨
+            </div>
+          )
+        })}
+
+        {/* Main panel */}
+        <div className="animate-combo-bounce flex flex-col items-center bg-[#2c1a0e]/92 border-2 border-[#f0d060] rounded-xl px-8 py-4 shadow-2xl">
+          <span className="text-[#f0d060] font-bold text-xl tracking-widest">★ {flash.comboName}</span>
+          <span className="text-[#c0392b] font-bold text-4xl mt-1">x{flash.multiplier.toFixed(1)}</span>
+          <span className="text-[#c8b89a] text-sm mt-1">コンボ成立！</span>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -105,12 +128,14 @@ function getNetaColor(type: string): string {
 export default function ShopView() {
   const phase = useGameStore((s) => s.phase)
   const cookingSession = useGameStore((s) => s.cookingSession)
+  const comboFlash = useGameStore((s) => s.comboFlash)
+  const clearComboFlash = useGameStore((s) => s.clearComboFlash)
 
   const showWip = phase === 'service' && cookingSession !== null
 
   return (
     <section
-      className="flex-1 flex items-center justify-center bg-[#ede5d0] border-b border-[#c8b89a] overflow-hidden"
+      className="flex-1 flex items-center justify-center bg-[#ede5d0] border-b border-[#c8b89a] overflow-hidden relative"
       aria-label="店内見下ろしビュー"
     >
       <svg
@@ -138,9 +163,6 @@ export default function ShopView() {
 
         {/* WIP プレート（営業中＆シャリ準備後のみ） */}
         {showWip && <WipPlate netaIds={cookingSession.netaIds} />}
-
-        {/* コンボ成立テロップ（一定時間で消える） */}
-        <ComboFlashOverlay />
 
         {/* 板前（中央） */}
         <g transform="translate(150, 168)">
@@ -173,16 +195,24 @@ export default function ShopView() {
           <text x="0" y="48" textAnchor="middle" fontSize="8" fill="#5c3d1e">富裕層</text>
         </g>
 
-        {/* 暖簾 */}
+        {/* 暖簾（揺れアニメーション） */}
         <rect x="0" y="0" width="480" height="18" fill="#2c1a0e" />
         <text x="240" y="13" textAnchor="middle" fontSize="10" fill="#f0d060" fontFamily="sans-serif">
           ── 寿司ドラフト ──
         </text>
-        <rect x="60"  y="0" width="20" height="22" fill="#c0392b" />
-        <rect x="180" y="0" width="20" height="22" fill="#c0392b" />
-        <rect x="280" y="0" width="20" height="22" fill="#c0392b" />
-        <rect x="400" y="0" width="20" height="22" fill="#c0392b" />
+        <rect x="60"  y="0" width="20" height="22" fill="#c0392b" className="animate-noren-swing" />
+        <rect x="180" y="0" width="20" height="22" fill="#c0392b" className="animate-noren-swing" style={{ animationDelay: '0.5s' }} />
+        <rect x="280" y="0" width="20" height="22" fill="#c0392b" className="animate-noren-swing" style={{ animationDelay: '1s' }} />
+        <rect x="400" y="0" width="20" height="22" fill="#c0392b" className="animate-noren-swing" style={{ animationDelay: '1.5s' }} />
       </svg>
+
+      {/* コンボ達成オーバーレイ（div版・CSS animation） */}
+      {comboFlash && (
+        <ComboFlashDivOverlay
+          flash={comboFlash}
+          onDone={clearComboFlash}
+        />
+      )}
     </section>
   )
 }

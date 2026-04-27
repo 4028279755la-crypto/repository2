@@ -110,6 +110,12 @@ export interface Customer {
   preferences: string[]
   /** 注文スロット定義（1〜3貫） */
   orderSlots: { requiredTags: string[]; baseReward: number }[]
+  /** セリフ（演出用） */
+  dialogue?: {
+    onArrive: string[]
+    onServe: string[]
+    onLeave: string[]
+  }
 }
 
 /** 注文（複数貫対応） */
@@ -246,6 +252,8 @@ export interface MetaState {
     /** 達成したコンボIDの累積セット */
     discoveredCombos: string[]
   }
+  /** チュートリアルを表示済みか */
+  tutorialSeen: boolean
 }
 
 /** ゲーム全体の状態 */
