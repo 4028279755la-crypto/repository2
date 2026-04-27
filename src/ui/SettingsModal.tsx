@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { audioManager, type AudioSettings } from '../core/audio'
+import { useGameStore } from '../store/gameStore'
 
 interface Props {
   onClose: () => void
@@ -7,12 +8,14 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [settings, setSettings] = useState<AudioSettings>(audioManager.getSettings())
+  const resetTutorial = useGameStore((s) => s.resetTutorial)
+  const resetMeta = useGameStore((s) => s.resetMeta)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   const update = (patch: Partial<AudioSettings>) => {
     const next = { ...settings, ...patch }
     setSettings(next)
     audioManager.updateSettings(patch)
-    // apply reduce-motion class to document root
     if (patch.reduceMotion !== undefined) {
       document.documentElement.classList.toggle('reduce-motion', patch.reduceMotion)
     }
@@ -23,6 +26,21 @@ export default function SettingsModal({ onClose }: Props) {
     window.addEventListener('keydown', handleEsc)
     return () => window.removeEventListener('keydown', handleEsc)
   }, [onClose])
+
+  const handleResetTutorial = () => {
+    resetTutorial()
+    onClose()
+  }
+
+  const handleResetMeta = () => {
+    if (!confirmReset) {
+      setConfirmReset(true)
+      return
+    }
+    resetMeta()
+    setConfirmReset(false)
+    onClose()
+  }
 
   return (
     <div
@@ -60,6 +78,26 @@ export default function SettingsModal({ onClose }: Props) {
             value={settings.reduceMotion}
             onChange={(v) => update({ reduceMotion: v })}
           />
+        </div>
+
+        <div className="border-t border-[#c8b89a] pt-3 flex flex-col gap-2">
+          <span className="text-[10px] text-[#8b7355] tracking-wider">データ管理</span>
+          <button
+            onClick={handleResetTutorial}
+            className="w-full py-2 bg-[#5c3d1e] text-[#f5f0e8] rounded-lg text-xs hover:bg-[#4a2e1a] transition-colors"
+          >
+            📖 チュートリアルをもう一度見る
+          </button>
+          <button
+            onClick={handleResetMeta}
+            className={`w-full py-2 rounded-lg text-xs font-bold transition-colors ${
+              confirmReset
+                ? 'bg-[#c0392b] text-white hover:bg-[#a93226]'
+                : 'bg-[#e8e0d0] text-[#5c3d1e] hover:bg-[#d8d0c0]'
+            }`}
+          >
+            {confirmReset ? '⚠ 本当にリセットする？（もう一度押す）' : '🗑 進行データをリセット'}
+          </button>
         </div>
 
         <button

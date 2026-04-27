@@ -41,7 +41,7 @@ import { ALL_SHOPS } from '../core/shops'
 import { ALL_SCHOOLS } from '../core/schools'
 import { ALL_APPRENTICES, APPRENTICE_SLOT_MAX } from '../core/apprentices'
 import { INGREDIENT_UNLOCKS, BUFF_UNLOCKS, COMBO_UNLOCK_COSTS, nextBuffCost } from '../core/unlocks'
-import { loadMeta, saveMeta } from './persistence'
+import { loadMeta, saveMeta, clearMeta, defaultMetaState } from './persistence'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
@@ -206,6 +206,10 @@ interface GameActions {
   persistMeta: () => void
   /** チュートリアル閲覧済みにする */
   markTutorialSeen: () => void
+  /** チュートリアルをもう一度表示する */
+  resetTutorial: () => void
+  /** メタ進行を完全リセット（のれん値・解放等すべて消える） */
+  resetMeta: () => void
 }
 
 // ── 内部ヘルパー ──────────────────────────────────────────────────────────────
@@ -1006,6 +1010,19 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       saveMeta(newMeta)
       return { meta: newMeta }
     })
+  },
+
+  resetTutorial: () => {
+    set((s) => {
+      const newMeta: MetaState = { ...s.meta, tutorialSeen: false }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+
+  resetMeta: () => {
+    clearMeta()
+    set({ meta: defaultMetaState() })
   },
 }))
 
