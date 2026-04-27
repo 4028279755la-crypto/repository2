@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { INGREDIENT_EMOJI } from '../core/logic'
 import type { Ingredient } from '../core/types'
 import type { ComboFlash } from '../store/gameStore'
 import ingredientsData from '../data/ingredients.json'
@@ -53,7 +52,7 @@ function WipPlate({ netaIds }: { netaIds: string[] }) {
       <text x="0" y="22" textAnchor="middle" fontSize="6" fill="#8b7355">
         {netas.length === 0
           ? 'シャリ準備'
-          : `${INGREDIENT_EMOJI[netas[0].type] ?? '🍣'}握り中 (${netas.length}貫)`}
+          : `${netas[0].name}握り中 (${netas.length}貫)`}
       </text>
     </g>
   )

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
-import { ORDER_TIME_MS, INGREDIENT_EMOJI } from '../core/logic'
+import { ORDER_TIME_MS } from '../core/logic'
+import { IngredientSprite } from '../render/IngredientSprite'
 import { MAX_PATIENCE } from '../core/cooking'
 import type { Customer, Ingredient, OrderSlot } from '../core/types'
 import customersData from '../data/customers.json'
@@ -36,11 +37,9 @@ function SlotBadge({
   const tagLabel = slot.requiredTags[0] ?? '?'
   // 代表食材を探す（タグ一致の最初の1件）
   const repIng = allIngredients.find((ing) => slot.requiredTags.some((t) => ing.tags.includes(t)))
-  const emoji = repIng ? (INGREDIENT_EMOJI[repIng.type] ?? '🍣') : '🍣'
 
   const filled = slot.filledBy !== null
   const filledIng = filled ? allIngredients.find((i) => i.id === slot.filledBy) : null
-  const filledEmoji = filledIng ? (INGREDIENT_EMOJI[filledIng.type] ?? '🍣') : null
 
   return (
     <div
@@ -54,7 +53,14 @@ function SlotBadge({
           : 'border-[#5c3d1e] bg-[#3a2510] text-[#8b7355]',
       ].join(' ')}
     >
-      <span aria-hidden="true">{filled ? (filledEmoji ?? '✓') : emoji}</span>
+      {filled
+        ? (filledIng
+            ? <IngredientSprite ingredientId={filledIng.id} size={24} />
+            : <span aria-hidden="true">✓</span>)
+        : (repIng
+            ? <IngredientSprite ingredientId={repIng.id} size={24} />
+            : <span aria-hidden="true">🍣</span>)
+      }
       {!filled && <span className="text-[8px]">{tagLabel.slice(0, 4)}</span>}
     </div>
   )
