@@ -1,10 +1,12 @@
 import { create, type StoreApi } from 'zustand'
-import type { GameState, Ingredient, RunState, MetaState, Order, Customer, Combo, CustomerType } from '../core/types'
+import type {
+  GameState, Ingredient, RunState, MetaState, Order, Customer, Combo, CustomerType,
+  DailyEvent, DayDifficulty, BossResult, RunResult,
+} from '../core/types'
 import ingredientsData from '../data/ingredients.json'
 import customersData from '../data/customers.json'
 import combosData from '../data/combos.json'
 import {
-  pickDraftHand,
   generateDayOrders,
   buildDayLog,
   advanceToNextDay,
@@ -12,6 +14,7 @@ import {
   STARTING_CASH,
   STARTING_REPUTATION,
   ORDER_TIME_MS,
+  MAX_DAY,
 } from '../core/logic'
 import {
   type CookingSession,
@@ -28,6 +31,9 @@ import {
   detectAvailableCombos,
   comboMultiplier,
 } from '../core/combo'
+import { getDifficulty } from '../core/season'
+import { rollDailyEvent } from '../core/events'
+import { evaluateRun } from '../core/boss'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
@@ -43,11 +49,11 @@ const defaultMeta: MetaState = {
   records: { bestRevenue: 0, totalRuns: 0, completedSeasons: 0 },
 }
 
-function makeNewRun(): RunState {
+function makeNewRun(meta: MetaState): RunState {
   return {
     currentDay: 1,
     shopId: 'shop_default',
-    cash: STARTING_CASH,
+    cash: STARTING_CASH + meta.permanentBuffs.startingCash,
     reputation: STARTING_REPUTATION,
     inventory: [],
     unlockedCombos: [],
@@ -108,6 +114,20 @@ interface StoreExtras {
 
   /** 締めフェーズ用サマリー */
   closingSummary: ClosingSummary | null
+
+  // ── Phase 4 ──
+  /** 本日の難易度（朝市開始時に確定） */
+  todayDifficulty: DayDifficulty | null
+  /** 本日のイベント（null＝普段通り） */
+  todayEvent: DailyEvent | null
+  /** 本日の客数合計（generateDayOrdersで生成された数） */
+  dailyCustomersTotal: number
+  /** 本日のスロット合計（生成時の総数） */
+  dailySlotsTotal: number
+  /** 月末ボスの結果（critic_review/result フェーズ用） */
+  bossResult: BossResult | null
+  /** ラン終了時の集計結果（result フェーズ用） */
+  runResult: RunResult | null
 }
 
 interface GameActions {
@@ -122,6 +142,14 @@ interface GameActions {
   timeoutCurrentSlot: () => void
   clearComboFlash: () => void
   confirmClosing: () => void
+  /** ニュース画面で「了解」 → 朝市へ */
+  confirmNews: () => void
+  /** ボス結果画面で「結果へ」 */
+  confirmCriticReview: () => void
+  /** リザルト画面で「タイトルへ」 */
+  returnToTitle: () => void
+  /** リザルト画面で「もう一度」 */
+  restartRun: () => void
   endRun: () => void
 }
 
@@ -179,18 +207,47 @@ export function getAllCombos(): Combo[] {
   return allCombos
 }
 
+/** すべての客定義を返す（UI参照用） */
+export function getAllCustomers(): Customer[] {
+  return allCustomers
+}
+
+/** イベントの食材価格倍率を反映した手札を生成 */
+function makeDraftHand(event: DailyEvent | null): Ingredient[] {
+  const priceMul = event?.effect.ingredientPriceMultiplier ?? 1
+  const rareMul = event?.effect.rareIngredientMultiplier ?? 1
+
+  // レア優遇: rare/epic を重み付けして並べ替え
+  const weighted = [...allIngredients].sort(() => Math.random() - 0.5)
+  if (rareMul > 1) {
+    weighted.sort((a, b) => {
+      const score = (i: Ingredient) =>
+        (i.rarity === 'epic' ? 3 : i.rarity === 'rare' ? 2 : i.rarity === 'uncommon' ? 1 : 0) * rareMul
+      return score(b) - score(a) + (Math.random() - 0.5)
+    })
+  }
+
+  const hand = weighted.slice(0, /* DRAFT_HAND_SIZE */ 6)
+  return hand.map((ing) => ({
+    ...ing,
+    basePrice: Math.max(1, Math.round(ing.basePrice * priceMul)),
+  }))
+}
+
 // ── ストア ────────────────────────────────────────────────────────────────────
 
-const initialRun = makeNewRun()
+const initialRun = makeNewRun(defaultMeta)
+const initialDifficulty = getDifficulty(1)
+const initialEvent = rollDailyEvent(initialRun)
 
 export const useGameStore = create<GameState & StoreExtras & GameActions>((set, get) => ({
   // ── GameState ──
-  phase: 'morning_market',
+  phase: 'news',
   run: initialRun,
   meta: defaultMeta,
 
   // ── Draft state ──
-  draftHand: pickDraftHand(allIngredients),
+  draftHand: makeDraftHand(initialEvent),
   draftSelectedIds: [],
 
   // ── Service state ──
@@ -211,32 +268,62 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   // ── Closing state ──
   closingSummary: null,
 
+  // ── Phase 4 ──
+  todayDifficulty: initialDifficulty,
+  todayEvent: initialEvent,
+  dailyCustomersTotal: 0,
+  dailySlotsTotal: 0,
+  bossResult: null,
+  runResult: null,
+
   // ── Actions ──
 
   startNewRun: () => {
-    const run = makeNewRun()
-    set((s) => ({
-      run,
-      phase: 'morning_market',
-      draftHand: pickDraftHand(allIngredients),
-      draftSelectedIds: [],
-      serviceOrders: [],
-      currentOrderIdx: 0,
-      currentSlotIdx: 0,
-      orderStartedAt: 0,
-      dailyRevenue: 0,
-      dailyReputationDelta: 0,
-      dailyServedSlots: 0,
-      dailyWalkedOut: 0,
-      cookingSession: null,
-      dailyAchievedCombos: [],
-      comboFlash: null,
-      closingSummary: null,
-      meta: {
+    set((s) => {
+      const newMeta = {
         ...s.meta,
         records: { ...s.meta.records, totalRuns: s.meta.records.totalRuns + 1 },
-      },
-    }))
+      }
+      const run = makeNewRun(newMeta)
+      const difficulty = getDifficulty(1)
+      const event = rollDailyEvent(run)
+      return {
+        run,
+        phase: 'news' as const,
+        draftHand: makeDraftHand(event),
+        draftSelectedIds: [],
+        serviceOrders: [],
+        currentOrderIdx: 0,
+        currentSlotIdx: 0,
+        orderStartedAt: 0,
+        dailyRevenue: 0,
+        dailyReputationDelta: 0,
+        dailyServedSlots: 0,
+        dailyWalkedOut: 0,
+        cookingSession: null,
+        dailyAchievedCombos: [],
+        comboFlash: null,
+        closingSummary: null,
+        todayDifficulty: difficulty,
+        todayEvent: event,
+        dailyCustomersTotal: 0,
+        dailySlotsTotal: 0,
+        bossResult: null,
+        runResult: null,
+        meta: newMeta,
+      }
+    })
+  },
+
+  confirmNews: () => {
+    const { phase, todayEvent, run } = get()
+    if (phase !== 'news' || !run) return
+    // ニュースの即時評判効果を即適用（dailyReputationDeltaには反映しない＝重複防止）
+    const eventRepDelta = todayEvent?.effect.reputationDelta ?? 0
+    set({
+      phase: 'morning_market',
+      run: { ...run, reputation: Math.max(0, Math.min(100, run.reputation + eventRepDelta)) },
+    })
   },
 
   toggleDraftCard: (id) => {
@@ -261,12 +348,13 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   confirmDraft: () => {
-    const { run, draftHand, draftSelectedIds } = get()
+    const { run, draftHand, draftSelectedIds, todayDifficulty, todayEvent } = get()
     if (!run || draftSelectedIds.length < DRAFT_SELECT_MAX) return
+    if (!todayDifficulty) return
 
     const selected = draftHand.filter((ing) => draftSelectedIds.includes(ing.id))
     const cost = selected.reduce((sum, ing) => sum + ing.basePrice, 0)
-    const orders = generateDayOrders(allCustomers)
+    const orders = generateDayOrders(allCustomers, todayDifficulty, todayEvent, run.reputation)
     const totalSlots = orders.reduce((s, o) => s + o.slots.length, 0)
 
     set({
@@ -283,6 +371,8 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       cookingSession: null,
       dailyAchievedCombos: [],
       comboFlash: null,
+      dailyCustomersTotal: orders.length,
+      dailySlotsTotal: totalSlots,
       closingSummary: makeClosingSummary(0, 0, 0, totalSlots, 0, []),
     })
   },
@@ -327,7 +417,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     const {
       cookingSession, run, serviceOrders, currentOrderIdx, currentSlotIdx,
       orderStartedAt, dailyRevenue, dailyReputationDelta, dailyServedSlots,
-      dailyWalkedOut, dailyAchievedCombos,
+      dailyWalkedOut, dailyAchievedCombos, todayEvent, todayDifficulty,
     } = get()
     if (!run || !cookingSession || cookingSession.netaIds.length === 0) return
 
@@ -352,11 +442,18 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     // コンボ判定
     const combo = findBestCombo(netas, allCombos, run.unlockedCombos, customerType)
 
-    const remaining = ORDER_TIME_MS - (Date.now() - orderStartedAt)
-    const ratio = Math.max(0, remaining) / ORDER_TIME_MS
+    // タイマーは難易度で短縮された timeLimit を採用
+    const timeLimit = order.timeLimit || ORDER_TIME_MS
+    const remaining = timeLimit - (Date.now() - orderStartedAt)
+    const ratio = Math.max(0, remaining) / timeLimit
     const baseRewardWithTip = calculateReward(slot.baseReward, ratio)
-    const multiplier = combo ? comboMultiplier(combo, customerType) : 1
+    let multiplier = combo ? comboMultiplier(combo, customerType) : 1
+    // 江戸前祭りイベント: 江戸前タグを含むコンボに +edomaeBonus
+    if (combo && todayEvent?.effect.edomaeBonus !== undefined && combo.requiredTags.includes('edomae')) {
+      multiplier += todayEvent.effect.edomaeBonus
+    }
     const reward = Math.round(baseRewardWithTip * multiplier)
+    void todayDifficulty
 
     // 在庫から消費。
     // - コンボ成立: 置いたネタすべて消費（ユーザーの意図どおり）
@@ -438,48 +535,144 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   confirmClosing: () => {
-    const { run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos, meta } = get()
+    const {
+      run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos,
+      dailyCustomersTotal, dailySlotsTotal, dailyWalkedOut, todayEvent, meta,
+    } = get()
     if (!run) return
 
-    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos)
+    const log = buildDayLog(run, {
+      revenue: dailyRevenue,
+      reputationDelta: dailyReputationDelta,
+      customersServed: dailyCustomersTotal - dailyWalkedOut,
+      customersTotal: dailyCustomersTotal,
+      slotsServed: dailyServedSlots,
+      slotsTotal: dailySlotsTotal,
+      walkedOut: dailyWalkedOut,
+      achievedCombos: dailyAchievedCombos,
+      eventId: todayEvent?.id ?? null,
+    })
     const nextRun = advanceToNextDay(run, log)
 
-    if (nextRun.isOver) {
+    // Day 30 を完了したら覆面調査員へ。それ以外は次の日のニュースへ。
+    if (run.currentDay >= MAX_DAY) {
+      const result = evaluateRun(nextRun, allCombos)
       set({
         run: nextRun,
-        phase: 'gameover',
+        phase: 'critic_review',
+        bossResult: result,
         closingSummary: null,
         comboFlash: null,
         meta: {
           ...meta,
-          norenValue: meta.norenValue + nextRun.reputation,
           records: {
             ...meta.records,
             bestRevenue: Math.max(meta.records.bestRevenue, dailyRevenue),
-            completedSeasons: meta.records.completedSeasons + 1,
           },
         },
       })
-    } else {
-      set({
-        run: nextRun,
-        phase: 'morning_market',
-        draftHand: pickDraftHand(allIngredients),
-        draftSelectedIds: [],
-        serviceOrders: [],
-        currentOrderIdx: 0,
-        currentSlotIdx: 0,
-        orderStartedAt: 0,
-        dailyRevenue: 0,
-        dailyReputationDelta: 0,
-        dailyServedSlots: 0,
-        dailyWalkedOut: 0,
-        cookingSession: null,
-        dailyAchievedCombos: [],
-        comboFlash: null,
-        closingSummary: null,
-      })
+      return
     }
+
+    // 翌日のニュース＋難易度を準備
+    const nextDifficulty = getDifficulty(nextRun.currentDay)
+    const nextEvent = rollDailyEvent(nextRun)
+
+    set({
+      run: nextRun,
+      phase: 'news',
+      draftHand: makeDraftHand(nextEvent),
+      draftSelectedIds: [],
+      serviceOrders: [],
+      currentOrderIdx: 0,
+      currentSlotIdx: 0,
+      orderStartedAt: 0,
+      dailyRevenue: 0,
+      dailyReputationDelta: 0,
+      dailyServedSlots: 0,
+      dailyWalkedOut: 0,
+      cookingSession: null,
+      dailyAchievedCombos: [],
+      comboFlash: null,
+      closingSummary: null,
+      todayDifficulty: nextDifficulty,
+      todayEvent: nextEvent,
+      dailyCustomersTotal: 0,
+      dailySlotsTotal: 0,
+    })
+  },
+
+  confirmCriticReview: () => {
+    const { run, bossResult, meta } = get()
+    if (!run || !bossResult) return
+
+    // のれん値計算
+    const uniqueCombos = new Set(run.comboHistory.map((e) => e.comboId))
+    const norenGained = bossResult.passed
+      ? run.reputation * 2 + run.comboHistory.length * 5
+      : Math.max(0, run.reputation - 0)
+    const finalReputation = bossResult.passed
+      ? run.reputation
+      : Math.max(0, run.reputation - 30)
+
+    const totalRevenue = run.history.reduce((s, l) => s + l.revenue, 0)
+    const bestDay = run.history.reduce(
+      (best, l) => (l.revenue > (best?.revenue ?? 0) ? l : best),
+      null as (typeof run.history)[0] | null,
+    )
+
+    const result: RunResult = {
+      totalRevenue,
+      bestDayRevenue: bestDay?.revenue ?? 0,
+      bestDay: bestDay?.dayNumber ?? 0,
+      totalCombos: run.comboHistory.length,
+      uniqueCombos: uniqueCombos.size,
+      finalReputation,
+      finalCash: run.cash,
+      norenGained,
+      passed: bossResult.passed,
+      bossResult,
+    }
+
+    set({
+      phase: 'result',
+      runResult: result,
+      run: { ...run, reputation: finalReputation, isOver: true },
+      meta: {
+        ...meta,
+        norenValue: meta.norenValue + norenGained,
+        records: {
+          ...meta.records,
+          completedSeasons: bossResult.passed
+            ? meta.records.completedSeasons + 1
+            : meta.records.completedSeasons,
+        },
+      },
+    })
+  },
+
+  returnToTitle: () => {
+    set({
+      phase: 'title',
+      run: null,
+      runResult: null,
+      bossResult: null,
+      todayEvent: null,
+      todayDifficulty: null,
+      draftSelectedIds: [],
+      draftHand: [],
+      serviceOrders: [],
+      cookingSession: null,
+      closingSummary: null,
+      comboFlash: null,
+      dailyAchievedCombos: [],
+      dailyCustomersTotal: 0,
+      dailySlotsTotal: 0,
+    })
+  },
+
+  restartRun: () => {
+    get().startNewRun()
   },
 
   endRun: () => {

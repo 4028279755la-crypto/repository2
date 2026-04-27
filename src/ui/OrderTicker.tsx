@@ -65,18 +65,20 @@ export default function OrderTicker() {
   const orderStartedAt = useGameStore((s) => s.orderStartedAt)
   const timeoutCurrentSlot = useGameStore((s) => s.timeoutCurrentSlot)
 
-  const [remainingMs, setRemainingMs] = useState(ORDER_TIME_MS)
+  const currentOrder = serviceOrders[currentOrderIdx]
+  const timeLimit = currentOrder?.timeLimit || ORDER_TIME_MS
+  const [remainingMs, setRemainingMs] = useState(timeLimit)
   const timedOut = useRef(false)
 
   useEffect(() => {
     if (phase !== 'service') {
-      setRemainingMs(ORDER_TIME_MS)
+      setRemainingMs(timeLimit)
       return
     }
     timedOut.current = false
 
     const tick = () => {
-      const r = ORDER_TIME_MS - (Date.now() - orderStartedAt)
+      const r = timeLimit - (Date.now() - orderStartedAt)
       const clamped = Math.max(0, r)
       setRemainingMs(clamped)
       if (r <= 0 && !timedOut.current) {
@@ -87,14 +89,13 @@ export default function OrderTicker() {
     tick()
     const id = setInterval(tick, 200)
     return () => clearInterval(id)
-  }, [phase, orderStartedAt, timeoutCurrentSlot])
+  }, [phase, orderStartedAt, timeoutCurrentSlot, timeLimit])
 
-  const currentOrder = serviceOrders[currentOrderIdx]
   const customer = currentOrder
     ? allCustomers.find((c) => c.id === currentOrder.customerId)
     : null
 
-  const progressPct = Math.round((remainingMs / ORDER_TIME_MS) * 100)
+  const progressPct = Math.round((remainingMs / timeLimit) * 100)
   const barColor =
     progressPct > 60 ? 'bg-[#2ecc71]' : progressPct > 30 ? 'bg-[#e67e22]' : 'bg-[#c0392b]'
   const remainingSec = Math.ceil(remainingMs / 1000)

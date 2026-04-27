@@ -44,5 +44,17 @@
     "orderSlots": [
       { "requiredTags": ["taishu", "popular", "egg", "sweet", "chewy"], "baseReward": 280 }
     ]
+  },
+  {
+    "id": "cus_blogger",
+    "type": "blogger",
+    "name": "グルメブロガー",
+    "patience": 50000,
+    "budget": 8000,
+    "preferences": ["premium", "fusion", "luxury"],
+    "orderSlots": [
+      { "requiredTags": ["premium", "fusion", "luxury", "edomae"], "baseReward": 1500 },
+      { "requiredTags": ["seaweed", "vegetable", "popular"], "baseReward": 800 }
+    ]
   }
 ]
