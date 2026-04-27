@@ -12,23 +12,33 @@ export const TIP_LOW_THRESHOLD = 0.3
 export const TIP_HIGH_RATE = 0.5
 export const TIP_LOW_RATE = 0.2
 
+/** 1セッションで握れる最大ネタ数（コンボ用） */
+export const MAX_NETAS_PER_SESSION = 3
+
 /**
  * 製作中の寿司セッション。
- * null でなければシャリ置き済み。netaId があれば握り完了状態。
+ * null でなければシャリ置き済み。netaIds の長さでネタの数が決まる。
  */
 export interface CookingSession {
-  /** 選んだネタのID（null＝シャリのみ） */
-  netaId: string | null
+  /** 選んだネタのIDリスト（0..MAX_NETAS_PER_SESSION） */
+  netaIds: string[]
 }
 
 /** シャリを置いてセッション開始 */
 export function startCooking(): CookingSession {
-  return { netaId: null }
+  return { netaIds: [] }
 }
 
-/** ネタをセット */
+/** ネタを追加（上限に達していれば変化なし） */
 export function placeNeta(session: CookingSession, ingredientId: string): CookingSession {
-  return { ...session, netaId: ingredientId }
+  if (session.netaIds.length >= MAX_NETAS_PER_SESSION) return session
+  return { ...session, netaIds: [...session.netaIds, ingredientId] }
+}
+
+/** ネタを最後の1個だけ取り消す */
+export function popNeta(session: CookingSession): CookingSession {
+  if (session.netaIds.length === 0) return session
+  return { ...session, netaIds: session.netaIds.slice(0, -1) }
 }
 
 /** スロットとネタが一致するか（タグ一致判定） */
@@ -52,14 +62,14 @@ export function calculateReward(baseReward: number, timeRemainingRatio: number):
 }
 
 /**
- * WIPが対象スロットに合致し、かつ提供可能な状態かを検証。
- * true を返せば serveSushi を実行してよい。
+ * WIPが対象スロットに合致するかを検証。
+ * いずれかのネタがslotのタグに合致すれば真。
  */
 export function validateServeSushi(
   session: CookingSession,
   slot: Pick<OrderSlot, 'requiredTags'>,
-  ingredientTags: string[],
+  netaTagsList: string[][],
 ): boolean {
-  if (session.netaId === null) return false
-  return validateSlotMatch(slot, ingredientTags)
+  if (session.netaIds.length === 0) return false
+  return netaTagsList.some((tags) => validateSlotMatch(slot, tags))
 }

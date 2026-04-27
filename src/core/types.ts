@@ -12,6 +12,9 @@ export type IngredientType =
   | 'anago'
   | 'ebi'
   | 'ikura'
+  | 'nori'
+  | 'kyuri'
+  | 'avocado'
 
 /** 客の種類 */
 export type CustomerType = 'tourist' | 'regular' | 'wealthy' | 'student'
@@ -56,12 +59,18 @@ export interface Combo {
   id: string
   /** コンボ名 */
   name: string
-  /** 成立に必要なタグ群 */
+  /** 成立に必要なタグ群（すべて満たす必要あり） */
   requiredTags: string[]
   /** 売上倍率 */
   multiplier: number
   /** コンボの説明文 */
   description: string
+  /** 好みの客タイプ（合致時 +50%） */
+  preferredCustomerType?: CustomerType
+  /** 必須の客タイプ（不一致なら出せない） */
+  requiredCustomerType?: CustomerType
+  /** 初期解放されているか */
+  unlockedByDefault: boolean
 }
 
 /** 1貫分のオーダースロット */
@@ -120,6 +129,14 @@ export interface DayLog {
   revenue: number
   /** のれん値の変動 */
   reputationDelta: number
+  /** 当日達成したコンボのIDリスト */
+  achievedCombos: string[]
+}
+
+/** ランをまたいで保持されるコンボ達成記録 */
+export interface ComboHistoryEntry {
+  comboId: string
+  dayNumber: number
 }
 
 /** 1ランの状態 */
@@ -138,6 +155,8 @@ export interface RunState {
   unlockedCombos: string[]
   /** これまでの日誌リスト */
   history: DayLog[]
+  /** これまでのコンボ達成履歴 */
+  comboHistory: ComboHistoryEntry[]
   /** ゲームオーバーフラグ */
   isOver: boolean
 }

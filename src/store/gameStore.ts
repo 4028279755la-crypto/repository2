@@ -1,11 +1,11 @@
-import { create } from 'zustand'
-import type { GameState, Ingredient, RunState, MetaState, Order, Customer } from '../core/types'
+import { create, type StoreApi } from 'zustand'
+import type { GameState, Ingredient, RunState, MetaState, Order, Customer, Combo, CustomerType } from '../core/types'
 import ingredientsData from '../data/ingredients.json'
 import customersData from '../data/customers.json'
+import combosData from '../data/combos.json'
 import {
   pickDraftHand,
   generateDayOrders,
-  consumeIngredient,
   buildDayLog,
   advanceToNextDay,
   DRAFT_SELECT_MAX,
@@ -17,14 +17,21 @@ import {
   type CookingSession,
   startCooking,
   placeNeta,
+  popNeta,
   validateSlotMatch,
   calculateReward,
   MISTAKE_TIME_PENALTY_MS,
   WALKOUT_REP_PENALTY,
 } from '../core/cooking'
+import {
+  findBestCombo,
+  detectAvailableCombos,
+  comboMultiplier,
+} from '../core/combo'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
+const allCombos = combosData as unknown as Combo[]
 
 const defaultMeta: MetaState = {
   norenValue: 0,
@@ -45,6 +52,7 @@ function makeNewRun(): RunState {
     inventory: [],
     unlockedCombos: [],
     history: [],
+    comboHistory: [],
     isOver: false,
   }
 }
@@ -55,6 +63,16 @@ export interface ClosingSummary {
   servedSlots: number
   totalSlots: number
   walkedOut: number
+  achievedCombos: string[]
+}
+
+/** 提供成功時に画面表示する直近のコンボ情報 */
+export interface ComboFlash {
+  comboId: string
+  comboName: string
+  multiplier: number
+  /** 表示開始時刻 */
+  shownAt: number
 }
 
 interface StoreExtras {
@@ -83,6 +101,11 @@ interface StoreExtras {
   /** 製作中の寿司セッション（null＝未着手） */
   cookingSession: CookingSession | null
 
+  /** 本日達成済みのコンボIDリスト */
+  dailyAchievedCombos: string[]
+  /** 直近の成立コンボ（画面表示用、自動的に消える） */
+  comboFlash: ComboFlash | null
+
   /** 締めフェーズ用サマリー */
   closingSummary: ClosingSummary | null
 }
@@ -93,9 +116,11 @@ interface GameActions {
   confirmDraft: () => void
   placeRice: () => void
   placeNetaAction: (ingredientId: string) => void
+  popNetaAction: () => void
   serveSushi: () => void
   cancelCooking: () => void
   timeoutCurrentSlot: () => void
+  clearComboFlash: () => void
   confirmClosing: () => void
   endRun: () => void
 }
@@ -132,8 +157,26 @@ function makeClosingSummary(
   servedSlots: number,
   totalSlots: number,
   walkedOut: number,
+  achievedCombos: string[] = [],
 ): ClosingSummary {
-  return { revenue, reputationDelta: repDelta, servedSlots, totalSlots, walkedOut }
+  return { revenue, reputationDelta: repDelta, servedSlots, totalSlots, walkedOut, achievedCombos }
+}
+
+/**
+ * 在庫から有効に握れるコンボ集合を、現在処理中の客タイプで絞って返す。
+ * UIの「コンボ可能」表示に使う。
+ */
+export function listAvailableCombos(
+  inventory: Ingredient[],
+  unlockedCombos: string[],
+  customerType?: CustomerType,
+): Combo[] {
+  return detectAvailableCombos(inventory, allCombos, unlockedCombos, customerType)
+}
+
+/** すべてのコンボ定義を返す（UI参照用） */
+export function getAllCombos(): Combo[] {
+  return allCombos
 }
 
 // ── ストア ────────────────────────────────────────────────────────────────────
@@ -162,6 +205,8 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
   // ── Cooking state ──
   cookingSession: null,
+  dailyAchievedCombos: [],
+  comboFlash: null,
 
   // ── Closing state ──
   closingSummary: null,
@@ -184,6 +229,8 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       dailyServedSlots: 0,
       dailyWalkedOut: 0,
       cookingSession: null,
+      dailyAchievedCombos: [],
+      comboFlash: null,
       closingSummary: null,
       meta: {
         ...s.meta,
@@ -234,7 +281,9 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       dailyServedSlots: 0,
       dailyWalkedOut: 0,
       cookingSession: null,
-      closingSummary: makeClosingSummary(0, 0, 0, totalSlots, 0),
+      dailyAchievedCombos: [],
+      comboFlash: null,
+      closingSummary: makeClosingSummary(0, 0, 0, totalSlots, 0, []),
     })
   },
 
@@ -248,73 +297,86 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   placeNetaAction: (ingredientId) => {
-    const {
-      cookingSession, run, serviceOrders, currentOrderIdx, currentSlotIdx,
-      orderStartedAt, dailyReputationDelta, dailyWalkedOut, closingSummary,
-    } = get()
+    const { cookingSession, run, orderStartedAt } = get()
     if (!run) return
 
     // シャリなしでネタ → 順序ミス
     if (cookingSession === null) {
-      set({
-        orderStartedAt: orderStartedAt - MISTAKE_TIME_PENALTY_MS,
-      })
+      set({ orderStartedAt: orderStartedAt - MISTAKE_TIME_PENALTY_MS })
       applyPatience(set, get, 'mistake')
       return
     }
 
     const ingredient = run.inventory.find((ing) => ing.id === ingredientId)
     if (!ingredient) return
+    // すでに最大数なら無視
+    if (cookingSession.netaIds.length >= 3) return
+    // 同じインスタンスの再選択は無視（同じIDでも別個体ならOKだが、今回は単純化）
+    if (cookingSession.netaIds.includes(ingredientId)) return
 
-    const order = serviceOrders[currentOrderIdx]
-    if (!order) return
-    const slot = order.slots[currentSlotIdx]
-    if (!slot) return
-
-    // 合わないネタ → 順序ミス
-    if (!validateSlotMatch(slot, ingredient.tags)) {
-      set({
-        cookingSession: null,
-        orderStartedAt: orderStartedAt - MISTAKE_TIME_PENALTY_MS,
-      })
-      applyPatience(set, get, 'mistake')
-      return
-    }
-
-    // 正しいネタ → セット
     set({ cookingSession: placeNeta(cookingSession, ingredientId) })
+  },
 
-    // 副作用なし: 参照のみで警告を抑制
-    void dailyReputationDelta
-    void dailyWalkedOut
-    void closingSummary
+  popNetaAction: () => {
+    const { cookingSession } = get()
+    if (!cookingSession) return
+    set({ cookingSession: popNeta(cookingSession) })
   },
 
   serveSushi: () => {
     const {
       cookingSession, run, serviceOrders, currentOrderIdx, currentSlotIdx,
       orderStartedAt, dailyRevenue, dailyReputationDelta, dailyServedSlots,
-      dailyWalkedOut, closingSummary,
+      dailyWalkedOut, dailyAchievedCombos,
     } = get()
-    if (!run || !cookingSession || cookingSession.netaId === null) return
+    if (!run || !cookingSession || cookingSession.netaIds.length === 0) return
 
     const order = serviceOrders[currentOrderIdx]
     if (!order) return
     const slot = order.slots[currentSlotIdx]
     if (!slot) return
 
-    const ingredient = run.inventory.find((ing) => ing.id === cookingSession.netaId)
-    if (!ingredient) return
+    const netas = cookingSession.netaIds
+      .map((id) => run.inventory.find((ing) => ing.id === id))
+      .filter((i): i is Ingredient => i !== undefined)
+    if (netas.length === 0) return
 
-    // 提供直前の最終チェック（二重安全）
-    if (!validateSlotMatch(slot, ingredient.tags)) return
+    // スロット要件: いずれかのネタがslotに合致する必要あり
+    const slotMatched = netas.some((n) => validateSlotMatch(slot, n.tags))
+    if (!slotMatched) return
+
+    const customer = allCustomers.find((c) => c.id === order.customerId)
+    const customerType = customer?.type
+    if (!customerType) return
+
+    // コンボ判定
+    const combo = findBestCombo(netas, allCombos, run.unlockedCombos, customerType)
 
     const remaining = ORDER_TIME_MS - (Date.now() - orderStartedAt)
     const ratio = Math.max(0, remaining) / ORDER_TIME_MS
-    const reward = calculateReward(slot.baseReward, ratio)
+    const baseRewardWithTip = calculateReward(slot.baseReward, ratio)
+    const multiplier = combo ? comboMultiplier(combo, customerType) : 1
+    const reward = Math.round(baseRewardWithTip * multiplier)
 
-    const newInventory = consumeIngredient(ingredient.id, run.inventory)
-    const updatedSlot: typeof slot = { ...slot, filledBy: ingredient.id }
+    // 在庫から消費。
+    // - コンボ成立: 置いたネタすべて消費（ユーザーの意図どおり）
+    // - 単独提供: 置いたネタのうちスロット一致する1個を消費（残りはWIPごと破棄＝消費しない）
+    let newInventory = run.inventory
+    if (combo) {
+      // 置いたネタIDを順に1つずつ inventory から取り除く
+      for (const id of cookingSession.netaIds) {
+        const idx = newInventory.findIndex((i) => i.id === id)
+        if (idx !== -1) newInventory = [...newInventory.slice(0, idx), ...newInventory.slice(idx + 1)]
+      }
+    } else {
+      const used = netas.find((n) => validateSlotMatch(slot, n.tags))
+      if (used) {
+        const idx = newInventory.findIndex((i) => i.id === used.id)
+        if (idx !== -1) newInventory = [...newInventory.slice(0, idx), ...newInventory.slice(idx + 1)]
+      }
+    }
+
+    const updatedSlot: typeof slot = { ...slot, filledBy: netas[0].id }
     const updatedSlots = order.slots.map((s, i) => (i === currentSlotIdx ? updatedSlot : s))
     const updatedOrder: Order = { ...order, slots: updatedSlots }
     const updatedOrders = updateOrder(serviceOrders, currentOrderIdx, updatedOrder)
@@ -322,34 +384,45 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     const newRevenue = dailyRevenue + reward
     const newServedSlots = dailyServedSlots + 1
     const totalSlots = updatedOrders.reduce((s, o) => s + o.slots.length, 0)
+    const newAchievedCombos = combo ? [...dailyAchievedCombos, combo.id] : dailyAchievedCombos
+    const newComboHistory = combo
+      ? [...run.comboHistory, { comboId: combo.id, dayNumber: run.currentDay }]
+      : run.comboHistory
+
+    const flash: ComboFlash | null = combo
+      ? { comboId: combo.id, comboName: combo.name, multiplier, shownAt: Date.now() }
+      : null
 
     const next = resolveNext(updatedOrders, currentOrderIdx, currentSlotIdx, false)
 
     if (next === 'done') {
       set({
-        run: { ...run, inventory: newInventory },
+        run: { ...run, inventory: newInventory, comboHistory: newComboHistory },
         serviceOrders: updatedOrders,
         phase: 'closing',
         dailyRevenue: newRevenue,
         dailyServedSlots: newServedSlots,
+        dailyAchievedCombos: newAchievedCombos,
         cookingSession: null,
-        closingSummary: makeClosingSummary(newRevenue, dailyReputationDelta, newServedSlots, totalSlots, dailyWalkedOut),
+        comboFlash: flash,
+        closingSummary: makeClosingSummary(
+          newRevenue, dailyReputationDelta, newServedSlots, totalSlots, dailyWalkedOut, newAchievedCombos,
+        ),
       })
     } else {
       set({
-        run: { ...run, inventory: newInventory },
+        run: { ...run, inventory: newInventory, comboHistory: newComboHistory },
         serviceOrders: updatedOrders,
         currentOrderIdx: next.orderIdx,
         currentSlotIdx: next.slotIdx,
         orderStartedAt: Date.now(),
         dailyRevenue: newRevenue,
         dailyServedSlots: newServedSlots,
+        dailyAchievedCombos: newAchievedCombos,
         cookingSession: null,
+        comboFlash: flash,
       })
     }
-
-    // 参照のみ
-    void closingSummary
   },
 
   cancelCooking: () => {
@@ -360,11 +433,15 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     applyPatience(set, get, 'timeout')
   },
 
+  clearComboFlash: () => {
+    set({ comboFlash: null })
+  },
+
   confirmClosing: () => {
-    const { run, dailyRevenue, dailyReputationDelta, dailyServedSlots, meta } = get()
+    const { run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos, meta } = get()
     if (!run) return
 
-    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedSlots)
+    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyAchievedCombos)
     const nextRun = advanceToNextDay(run, log)
 
     if (nextRun.isOver) {
@@ -372,6 +449,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
         run: nextRun,
         phase: 'gameover',
         closingSummary: null,
+        comboFlash: null,
         meta: {
           ...meta,
           norenValue: meta.norenValue + nextRun.reputation,
@@ -397,6 +475,8 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
         dailyServedSlots: 0,
         dailyWalkedOut: 0,
         cookingSession: null,
+        dailyAchievedCombos: [],
+        comboFlash: null,
         closingSummary: null,
       })
     }
@@ -409,8 +489,9 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
 // ── 忍耐ペナルティ共通処理 ───────────────────────────────────────────────────
 
-type SetFn = Parameters<Parameters<typeof create>[0]>[0]
-type GetFn = Parameters<Parameters<typeof create>[0]>[1]
+type StoreT = GameState & StoreExtras & GameActions
+type SetFn = StoreApi<StoreT>['setState']
+type GetFn = StoreApi<StoreT>['getState']
 
 function applyPatience(
   set: SetFn,
@@ -420,7 +501,8 @@ function applyPatience(
   const {
     run, serviceOrders, currentOrderIdx, currentSlotIdx,
     dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyWalkedOut,
-  } = get() as GameState & StoreExtras & GameActions
+    dailyAchievedCombos,
+  } = get()
 
   if (!run) return
   const order = serviceOrders[currentOrderIdx]
@@ -443,7 +525,9 @@ function applyPatience(
         dailyReputationDelta: newRepDelta,
         dailyWalkedOut: newWalkedOut,
         cookingSession: null,
-        closingSummary: makeClosingSummary(dailyRevenue, newRepDelta, dailyServedSlots, totalSlots, newWalkedOut),
+        closingSummary: makeClosingSummary(
+          dailyRevenue, newRepDelta, dailyServedSlots, totalSlots, newWalkedOut, dailyAchievedCombos,
+        ),
       })
     } else {
       set({
@@ -469,7 +553,9 @@ function applyPatience(
       phase: 'closing',
       dailyReputationDelta: repDelta,
       cookingSession: null,
-      closingSummary: makeClosingSummary(dailyRevenue, repDelta, dailyServedSlots, totalSlots, dailyWalkedOut),
+      closingSummary: makeClosingSummary(
+        dailyRevenue, repDelta, dailyServedSlots, totalSlots, dailyWalkedOut, dailyAchievedCombos,
+      ),
     })
   } else {
     set({

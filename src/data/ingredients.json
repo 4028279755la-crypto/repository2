@@ -7,7 +7,7 @@
     "basePrice": 800,
     "sellValue": 1200,
     "effects": ["評判+2"],
-    "tags": ["red_fish", "premium", "edomae"]
+    "tags": ["red_fish", "fatty", "premium", "edomae", "marinated", "popular"]
   },
   {
     "id": "ing_salmon",
@@ -17,7 +17,7 @@
     "basePrice": 400,
     "sellValue": 600,
     "effects": [],
-    "tags": ["orange_fish", "popular"]
+    "tags": ["orange_fish", "fatty", "popular", "fusion"]
   },
   {
     "id": "ing_hirame",
@@ -27,7 +27,7 @@
     "basePrice": 1200,
     "sellValue": 2000,
     "effects": ["評判+5"],
-    "tags": ["white_fish", "premium", "edomae", "seasonal"]
+    "tags": ["white_fish", "premium", "edomae", "seasonal", "aged"]
   },
   {
     "id": "ing_tamago",
@@ -37,7 +37,7 @@
     "basePrice": 100,
     "sellValue": 180,
     "effects": [],
-    "tags": ["egg", "taishu", "sweet"]
+    "tags": ["egg", "taishu", "sweet", "traditional"]
   },
   {
     "id": "ing_uni",
@@ -47,7 +47,7 @@
     "basePrice": 2500,
     "sellValue": 4500,
     "effects": ["評判+10", "客満足度+20%"],
-    "tags": ["shellfish", "luxury", "edomae", "seasonal"]
+    "tags": ["roe", "luxury", "premium", "edomae", "seasonal"]
   },
   {
     "id": "ing_ika",
@@ -57,6 +57,66 @@
     "basePrice": 300,
     "sellValue": 450,
     "effects": [],
-    "tags": ["white_fish", "taishu", "chewy"]
+    "tags": ["white_fish", "taishu", "chewy", "popular"]
+  },
+  {
+    "id": "ing_anago",
+    "type": "anago",
+    "name": "アナゴ",
+    "rarity": "rare",
+    "basePrice": 1100,
+    "sellValue": 1800,
+    "effects": ["評判+3"],
+    "tags": ["eel", "traditional", "edomae", "premium"]
+  },
+  {
+    "id": "ing_ebi",
+    "type": "ebi",
+    "name": "車エビ",
+    "rarity": "uncommon",
+    "basePrice": 600,
+    "sellValue": 950,
+    "effects": [],
+    "tags": ["shellfish", "edomae", "popular", "sweet"]
+  },
+  {
+    "id": "ing_ikura",
+    "type": "ikura",
+    "name": "いくら",
+    "rarity": "rare",
+    "basePrice": 1400,
+    "sellValue": 2300,
+    "effects": ["評判+4"],
+    "tags": ["roe", "premium", "seasonal", "luxury"]
+  },
+  {
+    "id": "ing_nori",
+    "type": "nori",
+    "name": "海苔",
+    "rarity": "common",
+    "basePrice": 80,
+    "sellValue": 120,
+    "effects": [],
+    "tags": ["seaweed", "traditional", "taishu"]
+  },
+  {
+    "id": "ing_kyuri",
+    "type": "kyuri",
+    "name": "きゅうり",
+    "rarity": "common",
+    "basePrice": 60,
+    "sellValue": 100,
+    "effects": [],
+    "tags": ["vegetable", "taishu", "chewy"]
+  },
+  {
+    "id": "ing_avocado",
+    "type": "avocado",
+    "name": "アボカド",
+    "rarity": "uncommon",
+    "basePrice": 350,
+    "sellValue": 550,
+    "effects": [],
+    "tags": ["vegetable", "fatty", "fusion", "popular"]
   }
 ]

@@ -9,6 +9,7 @@ export default function GameOver() {
     (best, l) => (l.revenue > (best?.revenue ?? 0) ? l : best),
     null as (typeof run.history)[0] | null,
   )
+  const totalCombos = run?.comboHistory.length ?? 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#1a0e05]/90">
@@ -30,6 +31,7 @@ export default function GameOver() {
               value={`${bestDay.dayNumber}日目 ¥${bestDay.revenue.toLocaleString()}`}
             />
           )}
+          <Row label="累計コンボ" value={`${totalCombos} 回`} highlight={totalCombos > 0} />
           <div className="border-t border-[#c8b89a] pt-2 mt-1">
             <Row label="のれん値" value={`${meta.norenValue}`} highlight />
             <Row label="累計ラン数" value={`${meta.records.totalRuns} 回`} />

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { INGREDIENT_EMOJI } from '../core/logic'
 import type { Ingredient } from '../core/types'
@@ -5,34 +6,80 @@ import ingredientsData from '../data/ingredients.json'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 
+const COMBO_FLASH_DURATION_MS = 1500
+
 // ── WIP プレート ─────────────────────────────────────────────────────────────
 
-function WipPlate({ netaId }: { netaId: string | null | undefined }) {
-  const neta = netaId ? allIngredients.find((i) => i.id === netaId) : null
-  const netaEmoji = neta ? (INGREDIENT_EMOJI[neta.type] ?? '🍣') : null
+function WipPlate({ netaIds }: { netaIds: string[] }) {
+  const netas = netaIds
+    .map((id) => allIngredients.find((i) => i.id === id))
+    .filter((n): n is Ingredient => n !== undefined)
+  const label =
+    netas.length === 0
+      ? '製作中: シャリのみ'
+      : `製作中: シャリ+${netas.map((n) => n.name).join('+')}`
 
   return (
-    <g transform="translate(340, 137)" aria-label={neta ? `製作中: シャリ+${neta.name}` : '製作中: シャリのみ'}>
+    <g transform="translate(340, 137)" aria-label={label}>
       {/* 皿 */}
-      <ellipse cx="0" cy="5" rx="26" ry="9" fill="#f5f0e8" stroke="#c8b89a" strokeWidth="1.5" />
+      <ellipse cx="0" cy="5" rx="30" ry="10" fill="#f5f0e8" stroke="#c8b89a" strokeWidth="1.5" />
       {/* シャリ */}
-      <ellipse cx="0" cy="1" rx="16" ry="7" fill="#fffff0" stroke="#e8e0d0" strokeWidth="1" />
-      {/* ネタ（色付き長方形） */}
-      {neta && (
-        <>
-          <rect x="-13" y="-6" width="26" height="9" rx="3"
-            fill={getNetaColor(neta.type)}
-            stroke="#00000022"
-            strokeWidth="0.5"
-          />
-          <text x="0" y="1" textAnchor="middle" fontSize="7" fill="#ffffff" fontWeight="bold">
-            {neta.name}
-          </text>
-        </>
-      )}
+      <ellipse cx="0" cy="1" rx="18" ry="7" fill="#fffff0" stroke="#e8e0d0" strokeWidth="1" />
+      {/* ネタ（最大3層に積む） */}
+      {netas.map((neta, i) => {
+        const yOffset = -6 - i * 4
+        return (
+          <g key={i}>
+            <rect
+              x="-13"
+              y={yOffset}
+              width="26"
+              height="6"
+              rx="2"
+              fill={getNetaColor(neta.type)}
+              stroke="#00000022"
+              strokeWidth="0.5"
+            />
+            {i === 0 && (
+              <text x="0" y={yOffset + 4.5} textAnchor="middle" fontSize="5" fill="#ffffff" fontWeight="bold">
+                {neta.name}
+              </text>
+            )}
+          </g>
+        )
+      })}
       {/* WIPラベル */}
-      <text x="0" y="18" textAnchor="middle" fontSize="6" fill="#8b7355">
-        {neta ? `${netaEmoji}握り中` : 'シャリ準備'}
+      <text x="0" y="22" textAnchor="middle" fontSize="6" fill="#8b7355">
+        {netas.length === 0
+          ? 'シャリ準備'
+          : `${INGREDIENT_EMOJI[netas[0].type] ?? '🍣'}握り中 (${netas.length}貫)`}
+      </text>
+    </g>
+  )
+}
+
+// ── コンボテロップ ──────────────────────────────────────────────────────────
+
+function ComboFlashOverlay() {
+  const comboFlash = useGameStore((s) => s.comboFlash)
+  const clearComboFlash = useGameStore((s) => s.clearComboFlash)
+
+  useEffect(() => {
+    if (!comboFlash) return
+    const id = setTimeout(() => clearComboFlash(), COMBO_FLASH_DURATION_MS)
+    return () => clearTimeout(id)
+  }, [comboFlash, clearComboFlash])
+
+  if (!comboFlash) return null
+
+  return (
+    <g transform="translate(240, 110)" aria-live="polite" pointerEvents="none">
+      <rect x="-110" y="-22" width="220" height="44" rx="8" fill="#2c1a0e" stroke="#f0d060" strokeWidth="2" opacity="0.95" />
+      <text x="0" y="-2" textAnchor="middle" fontSize="14" fill="#f0d060" fontWeight="bold">
+        ★ {comboFlash.comboName}
+      </text>
+      <text x="0" y="14" textAnchor="middle" fontSize="11" fill="#c0392b" fontWeight="bold">
+        x{comboFlash.multiplier.toFixed(1)} コンボ成立！
       </text>
     </g>
   )
@@ -90,7 +137,10 @@ export default function ShopView() {
         <rect x="30" y="140" width="420" height="16" fill="none" stroke="#90b8d0" strokeWidth="1" rx="2" />
 
         {/* WIP プレート（営業中＆シャリ準備後のみ） */}
-        {showWip && <WipPlate netaId={cookingSession.netaId} />}
+        {showWip && <WipPlate netaIds={cookingSession.netaIds} />}
+
+        {/* コンボ成立テロップ（一定時間で消える） */}
+        <ComboFlashOverlay />
 
         {/* 板前（中央） */}
         <g transform="translate(150, 168)">

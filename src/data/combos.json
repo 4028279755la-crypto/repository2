@@ -1,23 +1,101 @@
 [
   {
+    "id": "combo_tamago_nigiri",
+    "name": "玉子の握り",
+    "requiredTags": ["egg"],
+    "multiplier": 1.2,
+    "description": "甘く焼き上げた玉子。初心者にも親しみやすい一貫。",
+    "preferredCustomerType": "student",
+    "unlockedByDefault": true
+  },
+  {
     "id": "combo_zuke",
     "name": "漬けマグロ",
-    "requiredTags": ["red_fish", "edomae"],
-    "multiplier": 1.5,
-    "description": "江戸前の伝統技法。醤油に漬けたマグロは旨みが倍増する。"
+    "requiredTags": ["red_fish", "marinated"],
+    "multiplier": 2.0,
+    "description": "醤油に漬け込んだマグロ。江戸前の伝統技法。",
+    "preferredCustomerType": "wealthy",
+    "unlockedByDefault": true
   },
   {
-    "id": "combo_konbu",
-    "name": "昆布締め",
-    "requiredTags": ["white_fish", "edomae", "seasonal"],
-    "multiplier": 1.8,
-    "description": "昆布の旨みが白身魚に移り、上品な味わいに仕上がる。"
-  },
-  {
-    "id": "combo_tokujo",
-    "name": "特上にぎり",
-    "requiredTags": ["luxury", "premium"],
+    "id": "combo_kobujime",
+    "name": "昆布締めヒラメ",
+    "requiredTags": ["white_fish", "aged"],
     "multiplier": 2.5,
-    "description": "最高級食材の組み合わせ。のれん値が大きく上昇する。"
+    "description": "昆布の旨みが移った白身魚。評判が大きく上がる。",
+    "preferredCustomerType": "regular",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_totaku",
+    "name": "とろたく巻き",
+    "requiredTags": ["red_fish", "vegetable", "fatty"],
+    "multiplier": 2.2,
+    "description": "中トロとたくあんの巻き寿司。観光客に大人気。",
+    "preferredCustomerType": "tourist",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_uni_gunkan",
+    "name": "うに軍艦",
+    "requiredTags": ["premium", "seaweed"],
+    "multiplier": 3.0,
+    "description": "海苔で巻いたウニ軍艦。富裕層専用の極上一貫。",
+    "requiredCustomerType": "wealthy",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_ikura_don",
+    "name": "いくら丼",
+    "requiredTags": ["roe", "premium"],
+    "multiplier": 2.8,
+    "description": "宝石のように輝くいくら。高級素材の代表格。",
+    "preferredCustomerType": "wealthy",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_tekka",
+    "name": "鉄火巻き",
+    "requiredTags": ["red_fish", "seaweed"],
+    "multiplier": 1.8,
+    "description": "シンプルなマグロの巻き寿司。回転が速い。",
+    "preferredCustomerType": "regular",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_anago",
+    "name": "アナゴの押し寿司",
+    "requiredTags": ["eel", "traditional"],
+    "multiplier": 2.5,
+    "description": "ふっくら煮上げたアナゴ。江戸前の真髄。",
+    "preferredCustomerType": "regular",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_california",
+    "name": "創作カリフォルニア",
+    "requiredTags": ["orange_fish", "vegetable", "fusion"],
+    "multiplier": 2.3,
+    "description": "サーモンとアボカドの創作巻き。観光客が喜ぶ。",
+    "preferredCustomerType": "tourist",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_otoro",
+    "name": "大トロ",
+    "requiredTags": ["premium", "fatty", "red_fish"],
+    "multiplier": 4.0,
+    "description": "マグロの最高部位。富裕層のみが本当の価値を知る。",
+    "requiredCustomerType": "wealthy",
+    "unlockedByDefault": true
+  },
+  {
+    "id": "combo_dragon_roll",
+    "name": "ドラゴンロール",
+    "requiredTags": ["eel", "vegetable", "fusion"],
+    "multiplier": 3.2,
+    "description": "アナゴとアボカドを巻いた創作。海外で人気。",
+    "preferredCustomerType": "tourist",
+    "unlockedByDefault": false
   }
 ]

@@ -23,13 +23,14 @@ function ReputationStars({ value }: { value: number }) {
 }
 
 export default function HUD() {
-  const { run, meta, phase, dailyRevenue } = useGameStore()
+  const { run, meta, phase, dailyRevenue, dailyAchievedCombos } = useGameStore()
 
   const day = run?.currentDay ?? 0
   const cash = run?.cash ?? 0
   const reputation = run?.reputation ?? 0
   const norenValue = meta.norenValue
   const phaseInfo = PHASE_LABELS[phase] ?? { label: phase, color: 'text-[#c8b89a]' }
+  const comboCount = dailyAchievedCombos.length
 
   return (
     <header className="flex items-center justify-between px-4 py-2 bg-[#2c1a0e] text-[#f5f0e8] shrink-0 border-b-2 border-[#8b4513]">
@@ -50,6 +51,14 @@ export default function HUD() {
           <div className="flex items-center gap-1">
             <span className="text-[#c8b89a] text-xs">本日売上</span>
             <span className="font-bold text-[#2ecc71]">¥{dailyRevenue.toLocaleString()}</span>
+          </div>
+        )}
+        {phase === 'service' && (
+          <div className="flex items-center gap-1" aria-label={`本日のコンボ達成数 ${comboCount}`}>
+            <span className="text-[#c8b89a] text-xs">コンボ</span>
+            <span className={`font-bold ${comboCount > 0 ? 'text-[#f0d060]' : 'text-[#c8b89a]'}`}>
+              ★{comboCount}
+            </span>
           </div>
         )}
         <div className="flex items-center gap-1">

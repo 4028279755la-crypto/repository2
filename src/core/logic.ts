@@ -1,23 +1,26 @@
 import type { Ingredient, Order, Customer, RunState, DayLog, Weather } from './types'
 import { MAX_PATIENCE } from './cooking'
 
-export const DRAFT_HAND_SIZE = 4
-export const DRAFT_SELECT_MAX = 3
+export const DRAFT_HAND_SIZE = 6
+export const DRAFT_SELECT_MAX = 4
 export const ORDER_TIME_MS = 30_000
 export const MAX_DAY = 30
 export const STARTING_CASH = 3_000
 export const STARTING_REPUTATION = 50
 
 export const INGREDIENT_EMOJI: Record<string, string> = {
-  maguro: '🐟',
-  salmon: '🐠',
-  hirame: '🐡',
-  tamago: '🥚',
-  uni:    '🦔',
-  ika:    '🦑',
-  anago:  '🐍',
-  ebi:    '🦐',
-  ikura:  '🟠',
+  maguro:  '🐟',
+  salmon:  '🐠',
+  hirame:  '🐡',
+  tamago:  '🥚',
+  uni:     '🦔',
+  ika:     '🦑',
+  anago:   '🐍',
+  ebi:     '🦐',
+  ikura:   '🟠',
+  nori:    '🌿',
+  kyuri:   '🥒',
+  avocado: '🥑',
 }
 
 /** プールからランダムにN枚の手札を生成 */
@@ -61,6 +64,7 @@ export function buildDayLog(
   revenue: number,
   reputationDelta: number,
   servedCount: number,
+  achievedCombos: string[] = [],
   weather: Weather = 'sunny',
 ): DayLog {
   return {
@@ -70,6 +74,7 @@ export function buildDayLog(
     customersServed: servedCount,
     revenue,
     reputationDelta,
+    achievedCombos,
   }
 }
 
