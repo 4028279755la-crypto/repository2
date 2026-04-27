@@ -1,7 +1,8 @@
 import type { DayDifficulty, ReputationTier } from './types'
+import { BALANCE } from './balance'
 
-export const SEASON_LENGTH = 30
-export const SEGMENT_LENGTH = 5
+export const SEASON_LENGTH = BALANCE.MAX_DAY
+export const SEGMENT_LENGTH = BALANCE.SEGMENT_LENGTH
 
 export const TIER_LABELS: Record<ReputationTier, string> = {
   1: '★ 屋台',
@@ -21,10 +22,10 @@ export const TIER_DESCRIPTIONS: Record<ReputationTier, string> = {
 
 /** 評判値からティアを返す */
 export function reputationTier(reputation: number): ReputationTier {
-  if (reputation >= 80) return 5
-  if (reputation >= 60) return 4
-  if (reputation >= 40) return 3
-  if (reputation >= 20) return 2
+  if (reputation >= BALANCE.TIER_T5) return 5
+  if (reputation >= BALANCE.TIER_T4) return 4
+  if (reputation >= BALANCE.TIER_T3) return 3
+  if (reputation >= BALANCE.TIER_T2) return 2
   return 1
 }
 

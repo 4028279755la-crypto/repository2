@@ -11,7 +11,6 @@ import {
   generateDayOrders,
   buildDayLog,
   advanceToNextDay,
-  DRAFT_HAND_SIZE,
   DRAFT_SELECT_MAX,
   STARTING_CASH,
   STARTING_REPUTATION,
@@ -34,7 +33,7 @@ import {
   comboMultiplier,
 } from '../core/combo'
 import { getDifficulty } from '../core/season'
-import { rollDailyEvent } from '../core/events'
+import { rollDailyEvent, ALL_EVENTS } from '../core/events'
 import { evaluateRun } from '../core/boss'
 import { buildRunModifiers, comboBonusMultiplier, type RunModifiers } from '../core/modifiers'
 import { ALL_SHOPS } from '../core/shops'
@@ -42,6 +41,7 @@ import { ALL_SCHOOLS } from '../core/schools'
 import { ALL_APPRENTICES, APPRENTICE_SLOT_MAX } from '../core/apprentices'
 import { INGREDIENT_UNLOCKS, BUFF_UNLOCKS, COMBO_UNLOCK_COSTS, nextBuffCost } from '../core/unlocks'
 import { loadMeta, saveMeta, clearMeta, defaultMetaState } from './persistence'
+import { BALANCE } from '../core/balance'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
@@ -210,6 +210,11 @@ interface GameActions {
   resetTutorial: () => void
   /** メタ進行を完全リセット（のれん値・解放等すべて消える） */
   resetMeta: () => void
+
+  // ── デバッグ用（DEVビルドのみ呼び出し） ──
+  debugAddCash: (amount: number) => void
+  debugAddReputation: (amount: number) => void
+  debugSkipDay: () => void
 }
 
 // ── 内部ヘルパー ──────────────────────────────────────────────────────────────
@@ -275,27 +280,43 @@ export function getAllCustomers(): Customer[] {
 
 /**
  * イベントの食材価格倍率と、メタの解放済み食材プールを反映した手札を生成。
+ * Phase 7 §3: レアリティ別の重み + Day20 以降の rare/epic 補正。
+ * 同じネタが2枚並ばないよう非復元抽出する。
  * largerHand バフが立っていれば手札を1枚増やす。
  */
-function makeDraftHand(event: DailyEvent | null, meta: MetaState): Ingredient[] {
+function makeDraftHand(event: DailyEvent | null, meta: MetaState, day: number): Ingredient[] {
   const priceMul = event?.effect.ingredientPriceMultiplier ?? 1
   const rareMul = event?.effect.rareIngredientMultiplier ?? 1
 
   const pool = allIngredients.filter((i) => meta.unlockedIngredients.includes(i.id))
   const source = pool.length > 0 ? pool : allIngredients
 
-  // レア優遇: rare/epic を重み付けして並べ替え
-  const weighted = [...source].sort(() => Math.random() - 0.5)
-  if (rareMul > 1) {
-    weighted.sort((a, b) => {
-      const score = (i: Ingredient) =>
-        (i.rarity === 'epic' ? 3 : i.rarity === 'rare' ? 2 : i.rarity === 'uncommon' ? 1 : 0) * rareMul
-      return score(b) - score(a) + (Math.random() - 0.5)
-    })
+  const handSize = BALANCE.DRAFT_HAND_SIZE + (meta.permanentBuffs.largerHand ? 1 : 0)
+
+  // レアリティ別重み（Day20 以降は rare/epic ブースト）
+  const lateGame = day >= BALANCE.RARITY_LATE_GAME_DAY
+  const weights: Record<Ingredient['rarity'], number> = {
+    common:   BALANCE.RARITY_WEIGHTS.common,
+    uncommon: BALANCE.RARITY_WEIGHTS.uncommon,
+    rare:     (BALANCE.RARITY_WEIGHTS.rare + (lateGame ? BALANCE.RARITY_LATE_RARE_BOOST : 0)) * rareMul,
+    epic:     (BALANCE.RARITY_WEIGHTS.epic + (lateGame ? BALANCE.RARITY_LATE_EPIC_BOOST : 0)) * rareMul,
   }
 
-  const handSize = DRAFT_HAND_SIZE + (meta.permanentBuffs.largerHand ? 1 : 0)
-  const hand = weighted.slice(0, handSize)
+  // 非復元抽出（同IDが2枚出ないことを保証）
+  const remaining = [...source]
+  const hand: Ingredient[] = []
+  while (hand.length < handSize && remaining.length > 0) {
+    const totalW = remaining.reduce((s, i) => s + (weights[i.rarity] ?? 0.01), 0)
+    let r = Math.random() * totalW
+    let pickedIdx = remaining.length - 1
+    for (let i = 0; i < remaining.length; i++) {
+      r -= weights[remaining[i].rarity] ?? 0.01
+      if (r <= 0) { pickedIdx = i; break }
+    }
+    hand.push(remaining[pickedIdx])
+    remaining.splice(pickedIdx, 1)
+  }
+
   return hand.map((ing) => ({
     ...ing,
     basePrice: Math.max(1, Math.round(ing.basePrice * priceMul)),
@@ -663,12 +684,27 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
     // 翌日のニュース＋難易度を準備
     const nextDifficulty = getDifficulty(nextRun.currentDay)
-    const nextEvent = rollDailyEvent(nextRun)
+    let nextEvent = rollDailyEvent(nextRun)
+
+    // Phase 7 §5: Day10 を終えた時点で売上累計が閾値未満なら緊急補助金イベントに差し替え
+    if (run.currentDay === BALANCE.WARNING_CHECK_DAY) {
+      const cumulativeRevenue = nextRun.history.reduce((sum, h) => sum + h.revenue, 0)
+      if (cumulativeRevenue < BALANCE.DAY10_REVENUE_THRESHOLD) {
+        const subsidy = ALL_EVENTS.find((e) => e.id === 'emergency_subsidy')
+        if (subsidy) nextEvent = subsidy
+      }
+    }
+
+    // 緊急補助金イベントなら現金を即時加算
+    const cashBonus = nextEvent?.effect.cashBonus ?? 0
+    const finalRun: RunState = cashBonus > 0
+      ? { ...nextRun, cash: nextRun.cash + cashBonus }
+      : nextRun
 
     set({
-      run: nextRun,
+      run: finalRun,
       phase: 'news',
-      draftHand: makeDraftHand(nextEvent, meta),
+      draftHand: makeDraftHand(nextEvent, meta, finalRun.currentDay),
       draftSelectedIds: [],
       serviceOrders: [],
       currentOrderIdx: 0,
@@ -848,7 +884,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
         run: runWithBudget,
         phase: 'news',
         meta: newMeta,
-        draftHand: makeDraftHand(event, newMeta),
+        draftHand: makeDraftHand(event, newMeta, runWithBudget.currentDay),
         draftSelectedIds: [],
         serviceOrders: [],
         currentOrderIdx: 0,
@@ -1023,6 +1059,34 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   resetMeta: () => {
     clearMeta()
     set({ meta: defaultMetaState() })
+  },
+
+  debugAddCash: (amount: number) => {
+    set((s) => (s.run ? { run: { ...s.run, cash: s.run.cash + amount } } : {}))
+  },
+
+  debugAddReputation: (amount: number) => {
+    set((s) => {
+      if (!s.run) return {}
+      const next = Math.max(BALANCE.REPUTATION_MIN, Math.min(BALANCE.REPUTATION_MAX, s.run.reputation + amount))
+      return { run: { ...s.run, reputation: next } }
+    })
+  },
+
+  debugSkipDay: () => {
+    const { run } = get()
+    if (!run) return
+    // 簡易: 当日を即「締め」に進めて confirmClosing を呼べる状態にする
+    set({
+      phase: 'closing',
+      closingSummary: {
+        revenue: 0, reputationDelta: 0, servedSlots: 0, totalSlots: 0,
+        walkedOut: 0, achievedCombos: [], skippedCustomers: 0, forceClosed: false,
+      },
+      dailyRevenue: 0, dailyReputationDelta: 0, dailyServedSlots: 0,
+      dailyWalkedOut: 0, dailyCustomersTotal: 0, dailySlotsTotal: 0,
+      dailyAchievedCombos: [], serviceOrders: [], cookingSession: null,
+    })
   },
 }))
 

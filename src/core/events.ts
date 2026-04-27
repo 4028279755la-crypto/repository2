@@ -1,7 +1,8 @@
 import type { DailyEvent, RunState } from './types'
+import { BALANCE } from './balance'
 
-/** 朝市前にイベントが発動する確率 */
-export const EVENT_TRIGGER_PROBABILITY = 0.35
+/** 朝市前にイベントが発動する確率（Phase 7 §4: 0.35 → 0.25） */
+export const EVENT_TRIGGER_PROBABILITY = BALANCE.EVENT_TRIGGER_PROBABILITY
 
 export const ALL_EVENTS: DailyEvent[] = [
   {
@@ -42,7 +43,8 @@ export const ALL_EVENTS: DailyEvent[] = [
       customerCountMultiplier: 0.5,
       reputationDelta: -3,
     },
-    reputationCeiling: 50,
+    // Phase 7 §4: 50 → 30 に厳格化（序盤の詰みを回避）
+    reputationCeiling: BALANCE.EVENT_FOOD_POISON_REP_CEILING,
   },
   {
     id: 'tour_bus',
@@ -56,7 +58,7 @@ export const ALL_EVENTS: DailyEvent[] = [
   {
     id: 'rival_shop',
     name: '競合店オープン',
-    description: '駅前に新店オープン。今後3日間、客数-20%。',
+    description: '駅前に新店オープン。客数-20%（Phase 7 §4: 持続日数を緩和）。',
     effect: { customerCountMultiplier: 0.8 },
   },
   {
@@ -71,6 +73,12 @@ export const ALL_EVENTS: DailyEvent[] = [
     description: '今日は江戸前タグのコンボに +50% のボーナス。',
     effect: { edomaeBonus: 0.5 },
   },
+  {
+    id: 'emergency_subsidy',
+    name: '緊急補助金',
+    description: `経営状況を鑑み、商工会から ¥${BALANCE.EMERGENCY_SUBSIDY.toLocaleString()} の補助金が支給される。`,
+    effect: { cashBonus: BALANCE.EMERGENCY_SUBSIDY },
+  },
 ]
 
 /** 朝市前のランダムイベント抽選。発生しない日は null。 */
@@ -78,6 +86,8 @@ export function rollDailyEvent(run: RunState): DailyEvent | null {
   if (Math.random() >= EVENT_TRIGGER_PROBABILITY) return null
 
   const candidates = ALL_EVENTS.filter((e) => {
+    // 緊急補助金は警告フラグ経由でのみ発動するためランダム抽選から除外
+    if (e.id === 'emergency_subsidy') return false
     if (e.reputationCeiling !== undefined && run.reputation > e.reputationCeiling) return false
     if (e.reputationFloor !== undefined && run.reputation < e.reputationFloor) return false
     // requiresMeta は今は未使用（メタアンロック未実装のため弾く）

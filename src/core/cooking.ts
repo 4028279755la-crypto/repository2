@@ -1,19 +1,20 @@
 import type { OrderSlot } from './types'
+import { BALANCE } from './balance'
 
-export const MAX_PATIENCE = 3
+export const MAX_PATIENCE = BALANCE.PATIENCE_HEARTS
 /** 順序ミス時の残時間ペナルティ（ミリ秒） */
-export const MISTAKE_TIME_PENALTY_MS = 3_000
+export const MISTAKE_TIME_PENALTY_MS = BALANCE.MISTAKE_TIME_PENALTY_MS
 /** 怒り退店時の評判ペナルティ */
-export const WALKOUT_REP_PENALTY = -2
+export const WALKOUT_REP_PENALTY = BALANCE.REPUTATION_ANGRY
 
 /** チップ加算の閾値・倍率 */
-export const TIP_HIGH_THRESHOLD = 0.6
-export const TIP_LOW_THRESHOLD = 0.3
-export const TIP_HIGH_RATE = 0.5
-export const TIP_LOW_RATE = 0.2
+export const TIP_HIGH_THRESHOLD = BALANCE.TIP_THRESHOLD_HIGH
+export const TIP_LOW_THRESHOLD = BALANCE.TIP_THRESHOLD_MID
+export const TIP_HIGH_RATE = BALANCE.TIP_RATE_HIGH
+export const TIP_LOW_RATE = BALANCE.TIP_RATE_MID
 
 /** 1セッションで握れる最大ネタ数（コンボ用） */
-export const MAX_NETAS_PER_SESSION = 3
+export const MAX_NETAS_PER_SESSION = BALANCE.MAX_NETAS_PER_SUSHI
 
 /**
  * 製作中の寿司セッション。

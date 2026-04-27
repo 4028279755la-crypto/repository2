@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { MAX_DAY } from '../core/logic'
 import { reputationTier, TIER_LABELS } from '../core/season'
+import { BALANCE } from '../core/balance'
 
 const PHASE_LABELS: Record<string, { label: string; color: string }> = {
   news:           { label: 'ニュース', color: 'text-[#3498db]' },
@@ -67,6 +68,13 @@ export default function HUD() {
   const tier = reputationTier(reputation)
   const totalCombos = run?.comboHistory.length ?? 0
 
+  // Phase 7 §5: Day10 を過ぎても売上が低調なら経営警告を表示
+  const cumulativeRevenue = run?.history.reduce((s, h) => s + h.revenue, 0) ?? 0
+  const showWarning = !!run
+    && run.currentDay >= BALANCE.WARNING_CHECK_DAY
+    && cumulativeRevenue < BALANCE.DAY10_REVENUE_THRESHOLD
+    && phase !== 'title' && phase !== 'gameover'
+
   // Countup animation for revenue
   const animatedRevenue = useCountUp(phase === 'service' ? dailyRevenue : dailyRevenue)
 
@@ -100,6 +108,14 @@ export default function HUD() {
         {run && (
           <span className="text-xs text-[#f0d060] font-bold tracking-wider hidden md:inline">
             {TIER_LABELS[tier]}
+          </span>
+        )}
+        {showWarning && (
+          <span
+            className="text-[10px] font-bold px-2 py-0.5 rounded bg-[#c0392b] text-white animate-pulse"
+            title={`Day10 終了時点で売上累計が ¥${BALANCE.DAY10_REVENUE_THRESHOLD.toLocaleString()} 未満です`}
+          >
+            ⚠ 経営注意
           </span>
         )}
       </div>

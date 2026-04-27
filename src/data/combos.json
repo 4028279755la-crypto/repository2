@@ -3,7 +3,7 @@
     "id": "combo_tamago_nigiri",
     "name": "玉子の握り",
     "requiredTags": ["egg"],
-    "multiplier": 1.2,
+    "multiplier": 1.5,
     "description": "甘く焼き上げた玉子。初心者にも親しみやすい一貫。",
     "preferredCustomerType": "student",
     "unlockedByDefault": true
@@ -40,8 +40,8 @@
     "name": "特選うに軍艦",
     "requiredTags": ["premium", "seaweed"],
     "multiplier": 3.0,
-    "description": "海苔で巻いた特上ウニの軍艦。富裕層専用の極上一貫。",
-    "requiredCustomerType": "wealthy",
+    "description": "海苔で巻いた特上ウニの軍艦。富裕層に特に好まれる極上の一貫。",
+    "preferredCustomerType": "wealthy",
     "unlockedByDefault": false
   },
   {
@@ -84,7 +84,7 @@
     "id": "combo_otoro",
     "name": "大トロ握り",
     "requiredTags": ["premium", "fatty", "red_fish"],
-    "multiplier": 4.0,
+    "multiplier": 3.5,
     "description": "マグロの最高部位。富裕層のみが本当の価値を知る。",
     "requiredCustomerType": "wealthy",
     "unlockedByDefault": false

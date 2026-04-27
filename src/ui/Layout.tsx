@@ -17,7 +17,12 @@ import RecordScreen from './RecordScreen'
 import EarlyCloseButton from './EarlyCloseButton'
 import AudioProvider from './AudioProvider'
 import TutorialModal from './TutorialModal'
+import DebugPanel from './DebugPanel'
 import { useGameStore } from '../store/gameStore'
+
+const SHOW_DEBUG = import.meta.env.DEV
+  && typeof window !== 'undefined'
+  && new URLSearchParams(window.location.search).has('debug')
 
 function useScreenShake(trigger: number): boolean {
   const [shaking, setShaking] = useState(false)
@@ -94,13 +99,15 @@ export default function Layout() {
     <>
       <AudioProvider />
       <TitleScreen />
+      {SHOW_DEBUG && <DebugPanel />}
     </>
   )
-  if (phase === 'shop_select') return <ShopSelectScreen />
-  if (phase === 'school_select') return <SchoolSelectScreen />
-  if (phase === 'unlock_menu') return <UnlockScreen />
-  if (phase === 'apprentice_menu') return <ApprenticeScreen />
-  if (phase === 'record_menu') return <RecordScreen />
+  if (phase === 'shop_select') return <><ShopSelectScreen />{SHOW_DEBUG && <DebugPanel />}</>
+  if (phase === 'school_select') return <><SchoolSelectScreen />{SHOW_DEBUG && <DebugPanel />}</>
+  if (phase === 'unlock_menu') return <><UnlockScreen />{SHOW_DEBUG && <DebugPanel />}</>
+  if (phase === 'apprentice_menu') return <><ApprenticeScreen />{SHOW_DEBUG && <DebugPanel />}</>
+  if (phase === 'record_menu') return <><RecordScreen />{SHOW_DEBUG && <DebugPanel />}</>
+
 
   return (
     <>
@@ -126,6 +133,7 @@ export default function Layout() {
       <DayEndBanner visible={showDayEnd} />
 
       {!meta.tutorialSeen && <TutorialModal />}
+      {SHOW_DEBUG && <DebugPanel />}
     </>
   )
 }

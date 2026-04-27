@@ -4,13 +4,14 @@ import type {
 } from './types'
 import { MAX_PATIENCE } from './cooking'
 import { reputationTier } from './season'
+import { BALANCE } from './balance'
 
-export const DRAFT_HAND_SIZE = 6
-export const DRAFT_SELECT_MAX = 4
-export const ORDER_TIME_MS = 30_000
-export const MAX_DAY = 30
-export const STARTING_CASH = 3_000
-export const STARTING_REPUTATION = 50
+export const DRAFT_HAND_SIZE = BALANCE.DRAFT_HAND_SIZE
+export const DRAFT_SELECT_MAX = BALANCE.DRAFT_SELECT_MAX
+export const ORDER_TIME_MS = BALANCE.BASE_TIME_PER_ORDER_MS
+export const MAX_DAY = BALANCE.MAX_DAY
+export const STARTING_CASH = BALANCE.STARTING_CASH
+export const STARTING_REPUTATION = BALANCE.STARTING_REPUTATION
 
 export const INGREDIENT_EMOJI: Record<string, string> = {
   maguro:  '🐟',
@@ -234,7 +235,7 @@ export function advanceToNextDay(run: RunState, log: DayLog): RunState {
   return {
     ...run,
     cash: run.cash + log.revenue,
-    reputation: Math.max(0, Math.min(100, run.reputation + log.reputationDelta)),
+    reputation: Math.max(BALANCE.REPUTATION_MIN, Math.min(BALANCE.REPUTATION_MAX, run.reputation + log.reputationDelta)),
     inventory: [],
     currentDay: run.currentDay + 1,
     history: [...run.history, log],

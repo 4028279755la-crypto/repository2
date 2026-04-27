@@ -303,6 +303,7 @@ export type EventId =
   | 'rival_shop'
   | 'gourmet_blog'
   | 'edomae_festival'
+  | 'emergency_subsidy'
 
 /** イベントが当日のパラメータに与える影響 */
 export interface EventEffect {
@@ -328,6 +329,8 @@ export interface EventEffect {
   edomaeBonus?: number
   /** 評判要求倍率 */
   reputationRequirementMultiplier?: number
+  /** 即時の現金加算（緊急補助金など） */
+  cashBonus?: number
 }
 
 export interface DailyEvent {

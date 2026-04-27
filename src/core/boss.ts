@@ -1,19 +1,20 @@
 import type { RunState, BossResult, BossMetrics, Combo } from './types'
+import { BALANCE } from './balance'
 
 /** 各審査項目の閾値（クリア = 星1個） */
 export const BOSS_THRESHOLDS = {
   /** 平均販売価格（円/スロット） */
-  quality: 800,
+  quality: BALANCE.BOSS_MIN_AVG_PRICE,
   /** コンボ種類数 */
-  diversity: 4,
+  diversity: BALANCE.BOSS_MIN_COMBO_TYPES,
   /** スロット成功率 */
-  efficiency: 0.7,
+  efficiency: BALANCE.BOSS_MIN_SUCCESS_RATE,
   /** もてなし率（退店なし客比率） */
-  hospitality: 0.8,
+  hospitality: BALANCE.BOSS_MIN_HOSPITALITY_RATE,
 }
 
 /** 合格に必要な星数 */
-export const BOSS_PASS_STARS = 2
+export const BOSS_PASS_STARS = BALANCE.BOSS_PASS_STARS
 
 /** ラン全体の指標を集計 */
 export function computeBossMetrics(run: RunState): BossMetrics {

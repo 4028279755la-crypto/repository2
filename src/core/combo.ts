@@ -1,7 +1,8 @@
 import type { Combo, Ingredient, CustomerType } from './types'
+import { BALANCE } from './balance'
 
 /** 客タイプとの相性で +50% するボーナス倍率 */
-export const COMBO_PREFERRED_BONUS = 0.5
+export const COMBO_PREFERRED_BONUS = BALANCE.COMBO_PREFERRED_BONUS
 
 /**
  * 与えられた食材集合から、コンボのrequiredTagsをすべて満たせるかを判定。
