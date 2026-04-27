@@ -25,6 +25,11 @@ export type School = 'edomae' | 'sosaku' | 'taishu'
 /** ゲームのフェーズ */
 export type Phase =
   | 'title'
+  | 'shop_select'
+  | 'school_select'
+  | 'unlock_menu'
+  | 'apprentice_menu'
+  | 'record_menu'
   | 'news'
   | 'morning_market'
   | 'service'
@@ -160,11 +165,17 @@ export interface RunState {
   /** 現在の日数 */
   currentDay: number
   /** 店のID */
-  shopId: string
+  shopId: ShopId
+  /** 流派ID（このランで選択） */
+  schoolId: SchoolId
+  /** 雇用中の弟子（このラン開始時のスナップショット） */
+  apprentices: ApprenticeId[]
   /** 手持ち資金（円） */
   cash: number
   /** 評判値（0〜100） */
   reputation: number
+  /** 評判の上限（店舗修飾子で制限される場合あり） */
+  reputationCap: number
   /** 手持ち食材リスト */
   inventory: Ingredient[]
   /** 解放済みコンボのIDリスト */
@@ -177,35 +188,61 @@ export interface RunState {
   isOver: boolean
 }
 
+/** 店舗ID */
+export type ShopId = 'yatai' | 'rojiura' | 'ekimae' | 'ginza' | 'overseas'
+
+/** 流派ID */
+export type SchoolId = 'edomae' | 'sosaku' | 'taishu'
+
+/** 弟子ID */
+export type ApprenticeId = 'taro' | 'hanako' | 'kenichi' | 'miki' | 'daigoro'
+
+/** 永続バフのスタックレベル */
+export interface PermanentBuffs {
+  /** 初期資金ボーナス（最大3段階：+500/+1000/+1500） */
+  startingCashLevel: number
+  /** 朝市の手札+1（0/1） */
+  largerHand: boolean
+  /** 開始評判+5（最大3段階） */
+  startingRepLevel: number
+  /** 客の忍耐+1（0/1） */
+  patienceBonus: boolean
+  /** 月末ボスの評価項目1つ自動合格（0/1） */
+  bossExempt: boolean
+}
+
 /** メタ進行（ランをまたいで保持されるデータ） */
 export interface MetaState {
+  /** スキーマバージョン（マイグレーション用） */
+  version: number
   /** のれん値（ランクイン評価指標） */
   norenValue: number
   /** 解放済みの店IDリスト */
-  unlockedShops: string[]
+  unlockedShops: ShopId[]
   /** 解放済みの食材IDリスト */
   unlockedIngredients: string[]
   /** 解放済みのコンボIDリスト */
   unlockedCombos: string[]
-  /** 雇用済みの弟子IDリスト */
-  hiredApprentices: string[]
+  /** 解放済みの流派IDリスト */
+  unlockedSchools: SchoolId[]
+  /** 解放済みの弟子IDリスト（購入済みでまだ装着していなくても入る） */
+  unlockedApprentices: ApprenticeId[]
+  /** 雇用中の弟子IDリスト（最大3） */
+  hiredApprentices: ApprenticeId[]
   /** 永続バフ */
-  permanentBuffs: {
-    /** 初期資金ボーナス（円） */
-    startingCash: number
-    /** 初期手札枚数ボーナス */
-    startingHandSize: number
-    /** 最大スタミナ */
-    maxStamina: number
-  }
+  permanentBuffs: PermanentBuffs
   /** 記録 */
   records: {
     /** 最高売上（円） */
     bestRevenue: number
     /** 総ラン数 */
     totalRuns: number
-    /** 完了したシーズン数 */
+    /** 完了したシーズン数（合格） */
     completedSeasons: number
+    /** 最高評判 */
+    bestReputation: number
+    /** 達成したコンボIDの累積セット */
+    discoveredCombos: string[]
   }
 }
 
@@ -335,4 +372,109 @@ export interface RunResult {
   norenGained: number
   passed: boolean
   bossResult: BossResult
+}
+
+// ─── Phase 5: メタ進行 ───────────────────────────────────────────────────
+
+/** 店舗定義 */
+export interface ShopDef {
+  id: ShopId
+  name: string
+  description: string
+  /** 解放に必要なのれん値（0=初期解放） */
+  unlockNoren: number
+  /** 難易度の星 */
+  difficultyStars: 1 | 2 | 3 | 4 | 5
+  /** 修飾子 */
+  modifiers: ShopModifiers
+}
+
+export interface ShopModifiers {
+  /** 初期所持金加算 */
+  startingCashBonus?: number
+  /** 評判の上限 */
+  reputationCap?: number
+  /** 客数倍率 */
+  customerCountMultiplier?: number
+  /** 観光客の支払い倍率 */
+  touristPayoutMultiplier?: number
+  /** 富裕層必須コンボの倍率追加 */
+  wealthyComboBonus?: number
+  /** 創作タグコンボの倍率追加 */
+  fusionComboBonus?: number
+  /** 伝統客の有無減少（0で無効化、未指定で通常） */
+  traditionalCustomerPenalty?: number
+  /** 客の忍耐加算 */
+  patienceBonus?: number
+  /** 競合店イベントが頻発 */
+  rivalShopFrequent?: boolean
+}
+
+/** 流派定義 */
+export interface SchoolDef {
+  id: SchoolId
+  name: string
+  description: string
+  unlockNoren: number
+  modifiers: SchoolModifiers
+}
+
+export interface SchoolModifiers {
+  /** タグごとの報酬倍率（コンボ成立時に該当タグ含むなら適用） */
+  tagBonus: Record<string, number>
+  /** 客単価倍率（全体） */
+  payoutMultiplier?: number
+  /** 客数倍率 */
+  customerCountMultiplier?: number
+}
+
+/** 弟子定義 */
+export interface ApprenticeDef {
+  id: ApprenticeId
+  name: string
+  description: string
+  unlockNoren: number
+  /** 装着時の効果 */
+  effect: ApprenticeEffect
+}
+
+export interface ApprenticeEffect {
+  /** 朝市の予算ボーナス */
+  morningBudgetBonus?: number
+  /** 忍耐回復が早い（実装は注釈、本番では細やかな効果調整に） */
+  patienceTickFaster?: boolean
+  /** コンボ報酬倍率追加 */
+  comboBonus?: number
+  /** 月初に新規食材1個ランダム入手 */
+  monthlyBonusIngredient?: boolean
+  /** 月末ボスの効率項目を自動合格 */
+  bossEfficiencyExempt?: boolean
+}
+
+/** アンロック可能な食材エントリ（カタログ） */
+export interface IngredientUnlock {
+  id: string
+  name: string
+  cost: number
+  description: string
+}
+
+/** 永続バフのアンロックエントリ */
+export interface BuffUnlock {
+  id: keyof PermanentBuffs
+  name: string
+  description: string
+  /** レベル制バフの場合、各段階のコスト（startingCashLevel/startingRepLevelで使用） */
+  costs: number[]
+  maxLevel: number
+}
+
+/** 永続的に集計するスナップショット（記録画面用） */
+export interface MetaRecords {
+  totalRuns: number
+  successfulRuns: number
+  bestRevenue: number
+  bestReputation: number
+  longestSeason: number
+  discoveredCombos: string[]
 }

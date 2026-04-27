@@ -87,20 +87,21 @@ function pickCustomerType(
   return roster[roster.length - 1]
 }
 
-/** 1日の客数を難易度+イベントから決定 */
+/** 1日の客数を難易度+イベント+店舗/流派の倍率から決定 */
 export function computeDailyCustomerCount(
   difficulty: DayDifficulty,
   event: DailyEvent | null,
+  customerCountMultiplier = 1,
 ): number {
   const base = randInt(difficulty.customerCountMin, difficulty.customerCountMax)
-  let n = base
+  let n = base * customerCountMultiplier
   if (event?.effect.customerCountMultiplier !== undefined) {
-    n = Math.round(n * event.effect.customerCountMultiplier)
+    n = n * event.effect.customerCountMultiplier
   }
   if (event?.effect.customerCountBonus !== undefined) {
     n += event.effect.customerCountBonus
   }
-  return Math.max(1, n)
+  return Math.max(1, Math.round(n))
 }
 
 function randInt(min: number, max: number): number {
@@ -116,13 +117,26 @@ export function generateDayOrders(
   difficulty: DayDifficulty,
   event: DailyEvent | null,
   reputation: number,
+  options: {
+    customerCountMultiplier?: number
+    patienceBonus?: number
+    /** 伝統客（江戸前/regular）のスポーン抑制（0〜1） */
+    traditionalCustomerPenalty?: number
+  } = {},
 ): Order[] {
   const tier = reputationTier(reputation)
-  const count = computeDailyCustomerCount(difficulty, event)
+  const count = computeDailyCustomerCount(difficulty, event, options.customerCountMultiplier ?? 1)
+  const patienceBonus = options.patienceBonus ?? 0
+  const tradPenalty = options.traditionalCustomerPenalty ?? 0
 
   const orders: Order[] = []
   for (let i = 0; i < count; i++) {
-    const type = pickCustomerType(tier, difficulty, event)
+    let type = pickCustomerType(tier, difficulty, event)
+    // 伝統客（regular）抑制
+    if (tradPenalty > 0 && type === 'regular' && Math.random() < tradPenalty) {
+      // 観光客 or 富裕層に置換
+      type = Math.random() < 0.5 ? 'tourist' : 'wealthy'
+    }
     const customer = customers.find((c) => c.type === type) ?? customers[0]
     if (!customer) continue
 
@@ -133,15 +147,14 @@ export function generateDayOrders(
       filledBy: null as string | null,
     }))
     if (difficulty.slotCountBonus > 0 && slots.length < 3) {
-      // 同客の最初のスロットを複製して追加
       const extra = { ...slots[0], baseReward: Math.round(slots[0].baseReward * 0.8) }
       slots = [...slots, extra]
     }
 
-    // 忍耐: 既定値 + 難易度修正 + イベント
+    // 忍耐: 既定値 + 難易度修正 + イベント + 修飾子
     const patience = Math.max(
       1,
-      MAX_PATIENCE + difficulty.patienceModifier + (event?.effect.patienceBonus ?? 0),
+      MAX_PATIENCE + difficulty.patienceModifier + (event?.effect.patienceBonus ?? 0) + patienceBonus,
     )
 
     orders.push({
@@ -153,7 +166,7 @@ export function generateDayOrders(
     })
   }
 
-  // ブロガー来訪イベント: 1人ブロガーに置き換え（重複していなければ追加）
+  // ブロガー来訪イベント
   if (event?.effect.bloggerVisit && !orders.some((o) => o.customerId === 'cus_blogger')) {
     const blogger = customers.find((c) => c.type === 'blogger')
     if (blogger && orders.length > 0) {
@@ -167,7 +180,7 @@ export function generateDayOrders(
           filledBy: null,
         })),
         timeLimit: Math.round(ORDER_TIME_MS * difficulty.timeLimitMultiplier),
-        patience: Math.max(1, MAX_PATIENCE + difficulty.patienceModifier),
+        patience: Math.max(1, MAX_PATIENCE + difficulty.patienceModifier + patienceBonus),
       }
     }
   }

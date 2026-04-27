@@ -24,7 +24,7 @@
     "multiplier": 2.5,
     "description": "昆布の旨みが移った白身魚。評判が大きく上がる。",
     "preferredCustomerType": "regular",
-    "unlockedByDefault": true
+    "unlockedByDefault": false
   },
   {
     "id": "combo_totaku",
@@ -37,12 +37,12 @@
   },
   {
     "id": "combo_uni_gunkan",
-    "name": "うに軍艦",
+    "name": "特選うに軍艦",
     "requiredTags": ["premium", "seaweed"],
     "multiplier": 3.0,
-    "description": "海苔で巻いたウニ軍艦。富裕層専用の極上一貫。",
+    "description": "海苔で巻いた特上ウニの軍艦。富裕層専用の極上一貫。",
     "requiredCustomerType": "wealthy",
-    "unlockedByDefault": true
+    "unlockedByDefault": false
   },
   {
     "id": "combo_ikura_don",
@@ -73,21 +73,21 @@
   },
   {
     "id": "combo_california",
-    "name": "創作カリフォルニア",
+    "name": "創作カリフォルニアロール",
     "requiredTags": ["orange_fish", "vegetable", "fusion"],
     "multiplier": 2.3,
     "description": "サーモンとアボカドの創作巻き。観光客が喜ぶ。",
     "preferredCustomerType": "tourist",
-    "unlockedByDefault": true
+    "unlockedByDefault": false
   },
   {
     "id": "combo_otoro",
-    "name": "大トロ",
+    "name": "大トロ握り",
     "requiredTags": ["premium", "fatty", "red_fish"],
     "multiplier": 4.0,
     "description": "マグロの最高部位。富裕層のみが本当の価値を知る。",
     "requiredCustomerType": "wealthy",
-    "unlockedByDefault": true
+    "unlockedByDefault": false
   },
   {
     "id": "combo_dragon_roll",

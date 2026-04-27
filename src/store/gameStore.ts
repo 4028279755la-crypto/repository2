@@ -2,6 +2,7 @@ import { create, type StoreApi } from 'zustand'
 import type {
   GameState, Ingredient, RunState, MetaState, Order, Customer, Combo, CustomerType,
   DailyEvent, DayDifficulty, BossResult, RunResult,
+  ShopId, SchoolId, ApprenticeId, PermanentBuffs,
 } from '../core/types'
 import ingredientsData from '../data/ingredients.json'
 import customersData from '../data/customers.json'
@@ -10,6 +11,7 @@ import {
   generateDayOrders,
   buildDayLog,
   advanceToNextDay,
+  DRAFT_HAND_SIZE,
   DRAFT_SELECT_MAX,
   STARTING_CASH,
   STARTING_REPUTATION,
@@ -34,29 +36,40 @@ import {
 import { getDifficulty } from '../core/season'
 import { rollDailyEvent } from '../core/events'
 import { evaluateRun } from '../core/boss'
+import { buildRunModifiers, comboBonusMultiplier, type RunModifiers } from '../core/modifiers'
+import { ALL_SHOPS } from '../core/shops'
+import { ALL_SCHOOLS } from '../core/schools'
+import { ALL_APPRENTICES, APPRENTICE_SLOT_MAX } from '../core/apprentices'
+import { INGREDIENT_UNLOCKS, BUFF_UNLOCKS, COMBO_UNLOCK_COSTS, nextBuffCost } from '../core/unlocks'
+import { loadMeta, saveMeta } from './persistence'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
 const allCombos = combosData as unknown as Combo[]
 
-const defaultMeta: MetaState = {
-  norenValue: 0,
-  unlockedShops: ['shop_default'],
-  unlockedIngredients: allIngredients.map((i) => i.id),
-  unlockedCombos: [],
-  hiredApprentices: [],
-  permanentBuffs: { startingCash: 0, startingHandSize: 0, maxStamina: 100 },
-  records: { bestRevenue: 0, totalRuns: 0, completedSeasons: 0 },
+function applyStartingRep(meta: MetaState): number {
+  return Math.min(100, STARTING_REPUTATION + meta.permanentBuffs.startingRepLevel * 5)
 }
 
-function makeNewRun(meta: MetaState): RunState {
+function makeNewRun(
+  meta: MetaState,
+  shopId: ShopId,
+  schoolId: SchoolId,
+  apprentices: ApprenticeId[],
+): RunState {
+  const mods = buildRunModifiers(shopId, schoolId, apprentices, meta)
+  const startingCash = STARTING_CASH + mods.startingCashBonus
+  const startingRep = Math.min(mods.reputationCap, applyStartingRep(meta))
   return {
     currentDay: 1,
-    shopId: 'shop_default',
-    cash: STARTING_CASH + meta.permanentBuffs.startingCash,
-    reputation: STARTING_REPUTATION,
+    shopId,
+    schoolId,
+    apprentices: [...apprentices],
+    cash: startingCash,
+    reputation: startingRep,
+    reputationCap: mods.reputationCap,
     inventory: [],
-    unlockedCombos: [],
+    unlockedCombos: [...meta.unlockedCombos],
     history: [],
     comboHistory: [],
     isOver: false,
@@ -128,6 +141,14 @@ interface StoreExtras {
   bossResult: BossResult | null
   /** ラン終了時の集計結果（result フェーズ用） */
   runResult: RunResult | null
+
+  // ── Phase 5 ──
+  /** ラン開始フローで選択中の店舗（仮選択） */
+  selectedShopId: ShopId | null
+  /** ラン開始フローで選択中の流派 */
+  selectedSchoolId: SchoolId | null
+  /** 修飾子（ラン中のみ非null） */
+  runModifiers: RunModifiers | null
 }
 
 interface GameActions {
@@ -142,15 +163,41 @@ interface GameActions {
   timeoutCurrentSlot: () => void
   clearComboFlash: () => void
   confirmClosing: () => void
-  /** ニュース画面で「了解」 → 朝市へ */
   confirmNews: () => void
-  /** ボス結果画面で「結果へ」 */
   confirmCriticReview: () => void
-  /** リザルト画面で「タイトルへ」 */
   returnToTitle: () => void
-  /** リザルト画面で「もう一度」 */
   restartRun: () => void
   endRun: () => void
+
+  // ── Phase 5: メニュー遷移 ──
+  goToShopSelect: () => void
+  goToSchoolSelect: () => void
+  goToUnlockMenu: () => void
+  goToApprenticeMenu: () => void
+  goToRecordMenu: () => void
+  /** 任意のメニューからタイトルへ */
+  backToTitle: () => void
+
+  // ── Phase 5: 選択 ──
+  selectShop: (id: ShopId) => void
+  confirmShop: () => void
+  selectSchool: (id: SchoolId) => void
+  /** 流派選択完了 → 実際にランを開始する */
+  startRunWithSelection: () => void
+
+  // ── Phase 5: アンロック購入 ──
+  purchaseIngredientUnlock: (ingId: string) => void
+  purchaseComboUnlock: (comboId: string) => void
+  purchaseShopUnlock: (shopId: ShopId) => void
+  purchaseSchoolUnlock: (schoolId: SchoolId) => void
+  purchaseApprenticeUnlock: (apprenticeId: ApprenticeId) => void
+  purchaseBuff: (buffId: keyof PermanentBuffs) => void
+
+  // ── Phase 5: 弟子装着 ──
+  toggleApprenticeHire: (apprenticeId: ApprenticeId) => void
+
+  /** メタを永続化 */
+  persistMeta: () => void
 }
 
 // ── 内部ヘルパー ──────────────────────────────────────────────────────────────
@@ -212,13 +259,19 @@ export function getAllCustomers(): Customer[] {
   return allCustomers
 }
 
-/** イベントの食材価格倍率を反映した手札を生成 */
-function makeDraftHand(event: DailyEvent | null): Ingredient[] {
+/**
+ * イベントの食材価格倍率と、メタの解放済み食材プールを反映した手札を生成。
+ * largerHand バフが立っていれば手札を1枚増やす。
+ */
+function makeDraftHand(event: DailyEvent | null, meta: MetaState): Ingredient[] {
   const priceMul = event?.effect.ingredientPriceMultiplier ?? 1
   const rareMul = event?.effect.rareIngredientMultiplier ?? 1
 
+  const pool = allIngredients.filter((i) => meta.unlockedIngredients.includes(i.id))
+  const source = pool.length > 0 ? pool : allIngredients
+
   // レア優遇: rare/epic を重み付けして並べ替え
-  const weighted = [...allIngredients].sort(() => Math.random() - 0.5)
+  const weighted = [...source].sort(() => Math.random() - 0.5)
   if (rareMul > 1) {
     weighted.sort((a, b) => {
       const score = (i: Ingredient) =>
@@ -227,7 +280,8 @@ function makeDraftHand(event: DailyEvent | null): Ingredient[] {
     })
   }
 
-  const hand = weighted.slice(0, /* DRAFT_HAND_SIZE */ 6)
+  const handSize = DRAFT_HAND_SIZE + (meta.permanentBuffs.largerHand ? 1 : 0)
+  const hand = weighted.slice(0, handSize)
   return hand.map((ing) => ({
     ...ing,
     basePrice: Math.max(1, Math.round(ing.basePrice * priceMul)),
@@ -236,18 +290,16 @@ function makeDraftHand(event: DailyEvent | null): Ingredient[] {
 
 // ── ストア ────────────────────────────────────────────────────────────────────
 
-const initialRun = makeNewRun(defaultMeta)
-const initialDifficulty = getDifficulty(1)
-const initialEvent = rollDailyEvent(initialRun)
+const initialMeta = loadMeta()
 
 export const useGameStore = create<GameState & StoreExtras & GameActions>((set, get) => ({
   // ── GameState ──
-  phase: 'news',
-  run: initialRun,
-  meta: defaultMeta,
+  phase: 'title',
+  run: null,
+  meta: initialMeta,
 
   // ── Draft state ──
-  draftHand: makeDraftHand(initialEvent),
+  draftHand: [],
   draftSelectedIds: [],
 
   // ── Service state ──
@@ -269,50 +321,26 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   closingSummary: null,
 
   // ── Phase 4 ──
-  todayDifficulty: initialDifficulty,
-  todayEvent: initialEvent,
+  todayDifficulty: null,
+  todayEvent: null,
   dailyCustomersTotal: 0,
   dailySlotsTotal: 0,
   bossResult: null,
   runResult: null,
 
+  // ── Phase 5 ──
+  selectedShopId: null,
+  selectedSchoolId: null,
+  runModifiers: null,
+
   // ── Actions ──
 
+  /**
+   * Phase 5: タイトルから店舗選択へ。
+   * 実際のラン開始は startRunWithSelection で行う。
+   */
   startNewRun: () => {
-    set((s) => {
-      const newMeta = {
-        ...s.meta,
-        records: { ...s.meta.records, totalRuns: s.meta.records.totalRuns + 1 },
-      }
-      const run = makeNewRun(newMeta)
-      const difficulty = getDifficulty(1)
-      const event = rollDailyEvent(run)
-      return {
-        run,
-        phase: 'news' as const,
-        draftHand: makeDraftHand(event),
-        draftSelectedIds: [],
-        serviceOrders: [],
-        currentOrderIdx: 0,
-        currentSlotIdx: 0,
-        orderStartedAt: 0,
-        dailyRevenue: 0,
-        dailyReputationDelta: 0,
-        dailyServedSlots: 0,
-        dailyWalkedOut: 0,
-        cookingSession: null,
-        dailyAchievedCombos: [],
-        comboFlash: null,
-        closingSummary: null,
-        todayDifficulty: difficulty,
-        todayEvent: event,
-        dailyCustomersTotal: 0,
-        dailySlotsTotal: 0,
-        bossResult: null,
-        runResult: null,
-        meta: newMeta,
-      }
-    })
+    set({ phase: 'shop_select', selectedShopId: null, selectedSchoolId: null })
   },
 
   confirmNews: () => {
@@ -348,13 +376,20 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   confirmDraft: () => {
-    const { run, draftHand, draftSelectedIds, todayDifficulty, todayEvent } = get()
+    const { run, draftHand, draftSelectedIds, todayDifficulty, todayEvent, runModifiers } = get()
     if (!run || draftSelectedIds.length < DRAFT_SELECT_MAX) return
     if (!todayDifficulty) return
 
     const selected = draftHand.filter((ing) => draftSelectedIds.includes(ing.id))
     const cost = selected.reduce((sum, ing) => sum + ing.basePrice, 0)
-    const orders = generateDayOrders(allCustomers, todayDifficulty, todayEvent, run.reputation)
+    const orders = generateDayOrders(
+      allCustomers, todayDifficulty, todayEvent, run.reputation,
+      {
+        customerCountMultiplier: runModifiers?.customerCountMultiplier,
+        patienceBonus: runModifiers?.patienceBonus,
+        traditionalCustomerPenalty: runModifiers?.traditionalCustomerPenalty,
+      },
+    )
     const totalSlots = orders.reduce((s, o) => s + o.slots.length, 0)
 
     set({
@@ -452,7 +487,17 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     if (combo && todayEvent?.effect.edomaeBonus !== undefined && combo.requiredTags.includes('edomae')) {
       multiplier += todayEvent.effect.edomaeBonus
     }
-    const reward = Math.round(baseRewardWithTip * multiplier)
+    // 修飾子（流派・店舗・弟子）からの加算倍率
+    const mods = get().runModifiers
+    if (mods && combo) {
+      multiplier += comboBonusMultiplier(combo, mods)
+    }
+    // 観光客の支払い倍率（駅前店舗）
+    let touristMul = 1
+    if (mods && customerType === 'tourist') touristMul = mods.touristPayoutMultiplier
+    // 流派の payoutMultiplier（全体）
+    const payoutMul = mods?.payoutMultiplier ?? 1
+    const reward = Math.round(baseRewardWithTip * multiplier * touristMul * payoutMul)
     void todayDifficulty
 
     // 在庫から消費。
@@ -581,7 +626,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     set({
       run: nextRun,
       phase: 'news',
-      draftHand: makeDraftHand(nextEvent),
+      draftHand: makeDraftHand(nextEvent, meta),
       draftSelectedIds: [],
       serviceOrders: [],
       currentOrderIdx: 0,
@@ -603,15 +648,33 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   confirmCriticReview: () => {
-    const { run, bossResult, meta } = get()
+    const { run, bossResult, meta, runModifiers } = get()
     if (!run || !bossResult) return
+
+    // 弟子の効率自動合格 / メタの1項目自動合格 を後乗せで適用
+    let result = bossResult
+    if (runModifiers?.bossEfficiencyExempt && !result.efficiencyStar) {
+      const stars = result.totalStars + 1
+      result = { ...result, efficiencyStar: true, totalStars: stars, passed: stars >= 2 }
+    }
+    if (runModifiers?.bossOneExempt) {
+      // 最も低い未達項目を1つ加点（quality > diversity > efficiency > hospitality の順で見る）
+      const order: Array<keyof BossResult> = ['qualityStar', 'diversityStar', 'efficiencyStar', 'hospitalityStar']
+      for (const key of order) {
+        if (!(result as unknown as Record<string, boolean>)[key]) {
+          const stars = result.totalStars + 1
+          result = { ...result, [key]: true, totalStars: stars, passed: stars >= 2 } as BossResult
+          break
+        }
+      }
+    }
 
     // のれん値計算
     const uniqueCombos = new Set(run.comboHistory.map((e) => e.comboId))
-    const norenGained = bossResult.passed
+    const norenGained = result.passed
       ? run.reputation * 2 + run.comboHistory.length * 5
-      : Math.max(0, run.reputation - 0)
-    const finalReputation = bossResult.passed
+      : run.reputation
+    const finalReputation = result.passed
       ? run.reputation
       : Math.max(0, run.reputation - 30)
 
@@ -621,7 +684,7 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       null as (typeof run.history)[0] | null,
     )
 
-    const result: RunResult = {
+    const runResultObj: RunResult = {
       totalRevenue,
       bestDayRevenue: bestDay?.revenue ?? 0,
       bestDay: bestDay?.dayNumber ?? 0,
@@ -630,24 +693,38 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       finalReputation,
       finalCash: run.cash,
       norenGained,
-      passed: bossResult.passed,
-      bossResult,
+      passed: result.passed,
+      bossResult: result,
     }
+
+    // 達成コンボの累積記録（重複除外）
+    const newDiscovered = new Set([
+      ...meta.records.discoveredCombos,
+      ...run.comboHistory.map((e) => e.comboId),
+    ])
+
+    const newMeta: MetaState = {
+      ...meta,
+      norenValue: meta.norenValue + norenGained,
+      records: {
+        ...meta.records,
+        bestRevenue: Math.max(meta.records.bestRevenue, totalRevenue),
+        bestReputation: Math.max(meta.records.bestReputation, run.reputation),
+        completedSeasons: result.passed
+          ? meta.records.completedSeasons + 1
+          : meta.records.completedSeasons,
+        discoveredCombos: Array.from(newDiscovered),
+      },
+    }
+    saveMeta(newMeta)
 
     set({
       phase: 'result',
-      runResult: result,
+      runResult: runResultObj,
+      bossResult: result,
       run: { ...run, reputation: finalReputation, isOver: true },
-      meta: {
-        ...meta,
-        norenValue: meta.norenValue + norenGained,
-        records: {
-          ...meta.records,
-          completedSeasons: bossResult.passed
-            ? meta.records.completedSeasons + 1
-            : meta.records.completedSeasons,
-        },
-      },
+      meta: newMeta,
+      runModifiers: null,
     })
   },
 
@@ -672,11 +749,216 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   },
 
   restartRun: () => {
-    get().startNewRun()
+    set({ phase: 'shop_select', selectedShopId: null, selectedSchoolId: null, runResult: null, run: null, runModifiers: null })
   },
 
   endRun: () => {
     set({ phase: 'gameover' })
+  },
+
+  // ── Phase 5: メニュー遷移 ──
+  goToShopSelect: () => set({ phase: 'shop_select', selectedShopId: null, selectedSchoolId: null }),
+  goToSchoolSelect: () => set({ phase: 'school_select' }),
+  goToUnlockMenu: () => set({ phase: 'unlock_menu' }),
+  goToApprenticeMenu: () => set({ phase: 'apprentice_menu' }),
+  goToRecordMenu: () => set({ phase: 'record_menu' }),
+  backToTitle: () => set({ phase: 'title' }),
+
+  // ── Phase 5: 選択 ──
+  selectShop: (id) => {
+    const { meta } = get()
+    if (!meta.unlockedShops.includes(id)) return
+    set({ selectedShopId: id })
+  },
+  confirmShop: () => {
+    const { selectedShopId } = get()
+    if (!selectedShopId) return
+    set({ phase: 'school_select' })
+  },
+  selectSchool: (id) => {
+    const { meta } = get()
+    if (!meta.unlockedSchools.includes(id)) return
+    set({ selectedSchoolId: id })
+  },
+  startRunWithSelection: () => {
+    set((s) => {
+      const shopId = s.selectedShopId ?? 'yatai'
+      const schoolId = s.selectedSchoolId ?? 'edomae'
+      const apprentices = [...s.meta.hiredApprentices]
+      const newMeta: MetaState = {
+        ...s.meta,
+        records: { ...s.meta.records, totalRuns: s.meta.records.totalRuns + 1 },
+      }
+      saveMeta(newMeta)
+
+      const run = makeNewRun(newMeta, shopId, schoolId, apprentices)
+      const mods = buildRunModifiers(shopId, schoolId, apprentices, newMeta)
+      const difficulty = getDifficulty(1)
+      const event = rollDailyEvent(run)
+      // 朝市予算ボーナス（弟子の太郎など）はここで cash に加算
+      const runWithBudget: RunState = {
+        ...run,
+        cash: run.cash + mods.morningBudgetBonus,
+      }
+
+      return {
+        run: runWithBudget,
+        phase: 'news',
+        meta: newMeta,
+        draftHand: makeDraftHand(event, newMeta),
+        draftSelectedIds: [],
+        serviceOrders: [],
+        currentOrderIdx: 0,
+        currentSlotIdx: 0,
+        orderStartedAt: 0,
+        dailyRevenue: 0,
+        dailyReputationDelta: 0,
+        dailyServedSlots: 0,
+        dailyWalkedOut: 0,
+        cookingSession: null,
+        dailyAchievedCombos: [],
+        comboFlash: null,
+        closingSummary: null,
+        todayDifficulty: difficulty,
+        todayEvent: event,
+        dailyCustomersTotal: 0,
+        dailySlotsTotal: 0,
+        bossResult: null,
+        runResult: null,
+        runModifiers: mods,
+      }
+    })
+  },
+
+  // ── Phase 5: アンロック購入 ──
+  purchaseIngredientUnlock: (ingId) => {
+    set((s) => {
+      const entry = INGREDIENT_UNLOCKS.find((e) => e.id === ingId)
+      if (!entry) return s
+      if (s.meta.unlockedIngredients.includes(ingId)) return s
+      if (s.meta.norenValue < entry.cost) return s
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - entry.cost,
+        unlockedIngredients: [...s.meta.unlockedIngredients, ingId],
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+  purchaseComboUnlock: (comboId) => {
+    set((s) => {
+      const cost = COMBO_UNLOCK_COSTS[comboId]
+      if (cost === undefined) return s
+      if (s.meta.unlockedCombos.includes(comboId)) return s
+      if (s.meta.norenValue < cost) return s
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - cost,
+        unlockedCombos: [...s.meta.unlockedCombos, comboId],
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+  purchaseShopUnlock: (shopId) => {
+    set((s) => {
+      const shop = ALL_SHOPS.find((sh) => sh.id === shopId)
+      if (!shop) return s
+      if (s.meta.unlockedShops.includes(shopId)) return s
+      if (s.meta.norenValue < shop.unlockNoren) return s
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - shop.unlockNoren,
+        unlockedShops: [...s.meta.unlockedShops, shopId],
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+  purchaseSchoolUnlock: (schoolId) => {
+    set((s) => {
+      const school = ALL_SCHOOLS.find((sc) => sc.id === schoolId)
+      if (!school) return s
+      if (s.meta.unlockedSchools.includes(schoolId)) return s
+      if (s.meta.norenValue < school.unlockNoren) return s
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - school.unlockNoren,
+        unlockedSchools: [...s.meta.unlockedSchools, schoolId],
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+  purchaseApprenticeUnlock: (apprenticeId) => {
+    set((s) => {
+      const a = ALL_APPRENTICES.find((x) => x.id === apprenticeId)
+      if (!a) return s
+      if (s.meta.unlockedApprentices.includes(apprenticeId)) return s
+      if (s.meta.norenValue < a.unlockNoren) return s
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - a.unlockNoren,
+        unlockedApprentices: [...s.meta.unlockedApprentices, apprenticeId],
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+  purchaseBuff: (buffId) => {
+    set((s) => {
+      const buff = BUFF_UNLOCKS.find((b) => b.id === buffId)
+      if (!buff) return s
+      const buffs = s.meta.permanentBuffs
+      // 現在のレベル（boolean は 0/1、レベル制は数値）
+      let currentLevel: number
+      if (buffId === 'startingCashLevel') currentLevel = buffs.startingCashLevel
+      else if (buffId === 'startingRepLevel') currentLevel = buffs.startingRepLevel
+      else currentLevel = buffs[buffId] ? 1 : 0
+
+      const cost = nextBuffCost(buff, currentLevel)
+      if (cost === null) return s
+      if (s.meta.norenValue < cost) return s
+
+      const newBuffs: PermanentBuffs = { ...buffs }
+      if (buffId === 'startingCashLevel') newBuffs.startingCashLevel = currentLevel + 1
+      else if (buffId === 'startingRepLevel') newBuffs.startingRepLevel = currentLevel + 1
+      else if (buffId === 'largerHand') newBuffs.largerHand = true
+      else if (buffId === 'patienceBonus') newBuffs.patienceBonus = true
+      else if (buffId === 'bossExempt') newBuffs.bossExempt = true
+
+      const newMeta: MetaState = {
+        ...s.meta,
+        norenValue: s.meta.norenValue - cost,
+        permanentBuffs: newBuffs,
+      }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+
+  // ── Phase 5: 弟子装着 ──
+  toggleApprenticeHire: (apprenticeId) => {
+    set((s) => {
+      if (!s.meta.unlockedApprentices.includes(apprenticeId)) return s
+      const hired = s.meta.hiredApprentices
+      const isHired = hired.includes(apprenticeId)
+      let next: ApprenticeId[]
+      if (isHired) {
+        next = hired.filter((x) => x !== apprenticeId)
+      } else {
+        if (hired.length >= APPRENTICE_SLOT_MAX) return s
+        next = [...hired, apprenticeId]
+      }
+      const newMeta: MetaState = { ...s.meta, hiredApprentices: next }
+      saveMeta(newMeta)
+      return { meta: newMeta }
+    })
+  },
+
+  persistMeta: () => {
+    saveMeta(get().meta)
   },
 }))
 
