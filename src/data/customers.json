@@ -5,7 +5,10 @@
     "name": "外国人観光客",
     "patience": 45000,
     "budget": 3000,
-    "preferences": ["popular", "seasonal"]
+    "preferences": ["popular", "seasonal"],
+    "orderSlots": [
+      { "requiredTags": ["popular", "seasonal"], "baseReward": 650 }
+    ]
   },
   {
     "id": "cus_regular",
@@ -13,7 +16,11 @@
     "name": "常連の田中さん",
     "patience": 90000,
     "budget": 5000,
-    "preferences": ["edomae", "premium"]
+    "preferences": ["edomae", "premium"],
+    "orderSlots": [
+      { "requiredTags": ["edomae", "red_fish"], "baseReward": 900 },
+      { "requiredTags": ["premium", "white_fish"], "baseReward": 1100 }
+    ]
   },
   {
     "id": "cus_wealthy",
@@ -21,7 +28,11 @@
     "name": "富裕層のお客様",
     "patience": 60000,
     "budget": 15000,
-    "preferences": ["luxury", "premium", "seasonal"]
+    "preferences": ["luxury", "premium", "seasonal"],
+    "orderSlots": [
+      { "requiredTags": ["luxury", "seasonal"], "baseReward": 2200 },
+      { "requiredTags": ["premium", "edomae"], "baseReward": 1600 }
+    ]
   },
   {
     "id": "cus_student",
@@ -29,6 +40,9 @@
     "name": "学生の佐藤くん",
     "patience": 30000,
     "budget": 1200,
-    "preferences": ["taishu", "popular"]
+    "preferences": ["taishu", "popular"],
+    "orderSlots": [
+      { "requiredTags": ["taishu", "popular", "egg", "sweet", "chewy"], "baseReward": 280 }
+    ]
   }
 ]

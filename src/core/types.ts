@@ -64,6 +64,16 @@ export interface Combo {
   description: string
 }
 
+/** 1貫分のオーダースロット */
+export interface OrderSlot {
+  /** 必要なタグ（いずれかひとつ一致する食材で提供可） */
+  requiredTags: string[]
+  /** この貫の基本報酬（円） */
+  baseReward: number
+  /** この貫を満たした食材ID（null＝未提供） */
+  filledBy: string | null
+}
+
 /** 客データ */
 export interface Customer {
   /** 一意ID */
@@ -78,22 +88,22 @@ export interface Customer {
   budget: number
   /** 好みのタグリスト */
   preferences: string[]
+  /** 注文スロット定義（1〜3貫） */
+  orderSlots: { requiredTags: string[]; baseReward: number }[]
 }
 
-/** 注文 */
+/** 注文（複数貫対応） */
 export interface Order {
   /** 一意ID */
   id: string
   /** 注文した客のID */
   customerId: string
-  /** 要求する食材IDのリスト */
-  requiredIngredients: string[]
-  /** 制限時間（ミリ秒） */
+  /** 各貫のスロット（1〜3） */
+  slots: OrderSlot[]
+  /** 1スロットあたりの時間制限（ミリ秒） */
   timeLimit: number
-  /** 完了時の報酬（円） */
-  reward: number
-  /** 残り時間（ミリ秒） */
-  remainingMs: number
+  /** 現在の忍耐ゲージ（0〜MAX_PATIENCE） */
+  patience: number
 }
 
 /** 1日の記録 */
@@ -112,7 +122,7 @@ export interface DayLog {
   reputationDelta: number
 }
 
-/** 1ランンの状態 */
+/** 1ランの状態 */
 export interface RunState {
   /** 現在の日数 */
   currentDay: number

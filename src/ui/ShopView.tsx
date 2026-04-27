@@ -1,4 +1,66 @@
+import { useGameStore } from '../store/gameStore'
+import { INGREDIENT_EMOJI } from '../core/logic'
+import type { Ingredient } from '../core/types'
+import ingredientsData from '../data/ingredients.json'
+
+const allIngredients = ingredientsData as unknown as Ingredient[]
+
+// ── WIP プレート ─────────────────────────────────────────────────────────────
+
+function WipPlate({ netaId }: { netaId: string | null | undefined }) {
+  const neta = netaId ? allIngredients.find((i) => i.id === netaId) : null
+  const netaEmoji = neta ? (INGREDIENT_EMOJI[neta.type] ?? '🍣') : null
+
+  return (
+    <g transform="translate(340, 137)" aria-label={neta ? `製作中: シャリ+${neta.name}` : '製作中: シャリのみ'}>
+      {/* 皿 */}
+      <ellipse cx="0" cy="5" rx="26" ry="9" fill="#f5f0e8" stroke="#c8b89a" strokeWidth="1.5" />
+      {/* シャリ */}
+      <ellipse cx="0" cy="1" rx="16" ry="7" fill="#fffff0" stroke="#e8e0d0" strokeWidth="1" />
+      {/* ネタ（色付き長方形） */}
+      {neta && (
+        <>
+          <rect x="-13" y="-6" width="26" height="9" rx="3"
+            fill={getNetaColor(neta.type)}
+            stroke="#00000022"
+            strokeWidth="0.5"
+          />
+          <text x="0" y="1" textAnchor="middle" fontSize="7" fill="#ffffff" fontWeight="bold">
+            {neta.name}
+          </text>
+        </>
+      )}
+      {/* WIPラベル */}
+      <text x="0" y="18" textAnchor="middle" fontSize="6" fill="#8b7355">
+        {neta ? `${netaEmoji}握り中` : 'シャリ準備'}
+      </text>
+    </g>
+  )
+}
+
+function getNetaColor(type: string): string {
+  const colors: Record<string, string> = {
+    maguro: '#c0392b',
+    salmon: '#e67e22',
+    hirame: '#f5f5dc',
+    tamago: '#f0d060',
+    uni:    '#8b4513',
+    ika:    '#ecf0f1',
+    anago:  '#7f6a52',
+    ebi:    '#e8a090',
+    ikura:  '#c0392b',
+  }
+  return colors[type] ?? '#95a5a6'
+}
+
+// ── メイン ────────────────────────────────────────────────────────────────────
+
 export default function ShopView() {
+  const phase = useGameStore((s) => s.phase)
+  const cookingSession = useGameStore((s) => s.cookingSession)
+
+  const showWip = phase === 'service' && cookingSession !== null
+
   return (
     <section
       className="flex-1 flex items-center justify-center bg-[#ede5d0] border-b border-[#c8b89a] overflow-hidden"
@@ -8,7 +70,7 @@ export default function ShopView() {
         viewBox="0 0 480 240"
         className="w-full max-w-2xl h-auto"
         style={{ imageRendering: 'pixelated' }}
-        aria-hidden="true"
+        aria-hidden={!showWip}
       >
         {/* 床 */}
         <rect x="0" y="0" width="480" height="240" fill="#c8a97a" />
@@ -27,37 +89,34 @@ export default function ShopView() {
         <rect x="30" y="140" width="420" height="16" fill="#d0eeff" rx="2" opacity="0.7" />
         <rect x="30" y="140" width="420" height="16" fill="none" stroke="#90b8d0" strokeWidth="1" rx="2" />
 
+        {/* WIP プレート（営業中＆シャリ準備後のみ） */}
+        {showWip && <WipPlate netaId={cookingSession.netaId} />}
+
         {/* 板前（中央） */}
-        <g transform="translate(220, 168)">
-          {/* 体 */}
+        <g transform="translate(150, 168)">
           <rect x="-14" y="0" width="28" height="36" fill="#f5f0e8" rx="3" />
-          {/* 前掛け */}
           <rect x="-10" y="8" width="20" height="26" fill="#2c6090" rx="2" />
-          {/* 頭 */}
           <ellipse cx="0" cy="-8" rx="12" ry="11" fill="#f5cba7" />
-          {/* 帽子 */}
           <rect x="-10" y="-20" width="20" height="14" fill="#f5f0e8" rx="2" />
-          {/* 腕（左） */}
           <rect x="-22" y="10" width="10" height="6" fill="#f5cba7" rx="2" />
-          {/* 腕（右） */}
           <rect x="12" y="10" width="10" height="6" fill="#f5cba7" rx="2" />
         </g>
 
-        {/* 客1（左） */}
+        {/* 客1（左：観光客） */}
         <g transform="translate(90, 70)">
           <ellipse cx="0" cy="-6" rx="10" ry="9" fill="#f5cba7" />
           <rect x="-10" y="2" width="20" height="28" fill="#e74c3c" rx="2" />
           <text x="0" y="48" textAnchor="middle" fontSize="8" fill="#5c3d1e">観光客</text>
         </g>
 
-        {/* 客2（中央） */}
+        {/* 客2（中央：常連） */}
         <g transform="translate(240, 70)">
           <ellipse cx="0" cy="-6" rx="10" ry="9" fill="#e8c99a" />
           <rect x="-10" y="2" width="20" height="28" fill="#3498db" rx="2" />
           <text x="0" y="48" textAnchor="middle" fontSize="8" fill="#5c3d1e">常連</text>
         </g>
 
-        {/* 客3（右） */}
+        {/* 客3（右：富裕層） */}
         <g transform="translate(390, 70)">
           <ellipse cx="0" cy="-6" rx="10" ry="9" fill="#f5d5a0" />
           <rect x="-10" y="2" width="20" height="28" fill="#8e44ad" rx="2" />
@@ -69,10 +128,10 @@ export default function ShopView() {
         <text x="240" y="13" textAnchor="middle" fontSize="10" fill="#f0d060" fontFamily="sans-serif">
           ── 寿司ドラフト ──
         </text>
-        <rect x="60" y="0" width="20" height="22" fill="#c0392b" rx="0 0 4 4" />
-        <rect x="180" y="0" width="20" height="22" fill="#c0392b" rx="0 0 4 4" />
-        <rect x="280" y="0" width="20" height="22" fill="#c0392b" rx="0 0 4 4" />
-        <rect x="400" y="0" width="20" height="22" fill="#c0392b" rx="0 0 4 4" />
+        <rect x="60"  y="0" width="20" height="22" fill="#c0392b" />
+        <rect x="180" y="0" width="20" height="22" fill="#c0392b" />
+        <rect x="280" y="0" width="20" height="22" fill="#c0392b" />
+        <rect x="400" y="0" width="20" height="22" fill="#c0392b" />
       </svg>
     </section>
   )

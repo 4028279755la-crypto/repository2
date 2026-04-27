@@ -11,7 +11,17 @@ import {
   DRAFT_SELECT_MAX,
   STARTING_CASH,
   STARTING_REPUTATION,
+  ORDER_TIME_MS,
 } from '../core/logic'
+import {
+  type CookingSession,
+  startCooking,
+  placeNeta,
+  validateSlotMatch,
+  calculateReward,
+  MISTAKE_TIME_PENALTY_MS,
+  WALKOUT_REP_PENALTY,
+} from '../core/cooking'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 const allCustomers = customersData as unknown as Customer[]
@@ -42,8 +52,9 @@ function makeNewRun(): RunState {
 export interface ClosingSummary {
   revenue: number
   reputationDelta: number
-  servedCount: number
-  totalOrders: number
+  servedSlots: number
+  totalSlots: number
+  walkedOut: number
 }
 
 interface StoreExtras {
@@ -56,14 +67,21 @@ interface StoreExtras {
   serviceOrders: Order[]
   /** 現在処理中のオーダーインデックス */
   currentOrderIdx: number
-  /** 現在のオーダーが開始された timestamp */
+  /** 現在処理中のスロットインデックス */
+  currentSlotIdx: number
+  /** 現在のスロットが開始された timestamp */
   orderStartedAt: number
   /** 本日の累計売上 */
   dailyRevenue: number
   /** 本日の評判変動 */
   dailyReputationDelta: number
-  /** 本日の提供成功件数 */
-  dailyServedCount: number
+  /** 本日の提供成功スロット数 */
+  dailyServedSlots: number
+  /** 本日の怒り退店客数 */
+  dailyWalkedOut: number
+
+  /** 製作中の寿司セッション（null＝未着手） */
+  cookingSession: CookingSession | null
 
   /** 締めフェーズ用サマリー */
   closingSummary: ClosingSummary | null
@@ -73,11 +91,52 @@ interface GameActions {
   startNewRun: () => void
   toggleDraftCard: (ingredientId: string) => void
   confirmDraft: () => void
-  serveCurrentOrder: (ingredientId: string) => void
-  timeoutCurrentOrder: () => void
+  placeRice: () => void
+  placeNetaAction: (ingredientId: string) => void
+  serveSushi: () => void
+  cancelCooking: () => void
+  timeoutCurrentSlot: () => void
   confirmClosing: () => void
   endRun: () => void
 }
+
+// ── 内部ヘルパー ──────────────────────────────────────────────────────────────
+
+/** orders の指定インデックスを部分更新した新しい配列を返す */
+function updateOrder(orders: Order[], idx: number, patch: Partial<Order>): Order[] {
+  return orders.map((o, i) => (i === idx ? { ...o, ...patch } : o))
+}
+
+/** 次に処理すべき {orderIdx, slotIdx} を返す。全オーダー終了なら 'done' */
+function resolveNext(
+  orders: Order[],
+  orderIdx: number,
+  slotIdx: number,
+  skipWholeOrder: boolean,
+): { orderIdx: number; slotIdx: number } | 'done' {
+  let nextOrder = orderIdx
+  let nextSlot = slotIdx + 1
+
+  if (skipWholeOrder || nextSlot >= orders[orderIdx].slots.length) {
+    nextOrder = orderIdx + 1
+    nextSlot = 0
+  }
+
+  if (nextOrder >= orders.length) return 'done'
+  return { orderIdx: nextOrder, slotIdx: nextSlot }
+}
+
+function makeClosingSummary(
+  revenue: number,
+  repDelta: number,
+  servedSlots: number,
+  totalSlots: number,
+  walkedOut: number,
+): ClosingSummary {
+  return { revenue, reputationDelta: repDelta, servedSlots, totalSlots, walkedOut }
+}
+
+// ── ストア ────────────────────────────────────────────────────────────────────
 
 const initialRun = makeNewRun()
 
@@ -94,10 +153,15 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
   // ── Service state ──
   serviceOrders: [],
   currentOrderIdx: 0,
+  currentSlotIdx: 0,
   orderStartedAt: 0,
   dailyRevenue: 0,
   dailyReputationDelta: 0,
-  dailyServedCount: 0,
+  dailyServedSlots: 0,
+  dailyWalkedOut: 0,
+
+  // ── Cooking state ──
+  cookingSession: null,
 
   // ── Closing state ──
   closingSummary: null,
@@ -113,16 +177,17 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
       draftSelectedIds: [],
       serviceOrders: [],
       currentOrderIdx: 0,
+      currentSlotIdx: 0,
+      orderStartedAt: 0,
       dailyRevenue: 0,
       dailyReputationDelta: 0,
-      dailyServedCount: 0,
+      dailyServedSlots: 0,
+      dailyWalkedOut: 0,
+      cookingSession: null,
       closingSummary: null,
       meta: {
         ...s.meta,
-        records: {
-          ...s.meta.records,
-          totalRuns: s.meta.records.totalRuns + 1,
-        },
+        records: { ...s.meta.records, totalRuns: s.meta.records.totalRuns + 1 },
       },
     }))
   },
@@ -154,98 +219,152 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
 
     const selected = draftHand.filter((ing) => draftSelectedIds.includes(ing.id))
     const cost = selected.reduce((sum, ing) => sum + ing.basePrice, 0)
-    const orders = generateDayOrders(allCustomers, allIngredients)
+    const orders = generateDayOrders(allCustomers)
+    const totalSlots = orders.reduce((s, o) => s + o.slots.length, 0)
 
     set({
       run: { ...run, inventory: selected, cash: run.cash - cost },
       phase: 'service',
       serviceOrders: orders,
       currentOrderIdx: 0,
+      currentSlotIdx: 0,
       orderStartedAt: Date.now(),
       dailyRevenue: 0,
       dailyReputationDelta: 0,
-      dailyServedCount: 0,
+      dailyServedSlots: 0,
+      dailyWalkedOut: 0,
+      cookingSession: null,
+      closingSummary: makeClosingSummary(0, 0, 0, totalSlots, 0),
     })
   },
 
-  serveCurrentOrder: (ingredientId) => {
-    const {
-      run, serviceOrders, currentOrderIdx,
-      dailyRevenue, dailyReputationDelta, dailyServedCount,
-    } = get()
-    if (!run) return
-    const order = serviceOrders[currentOrderIdx]
-    if (!order) return
-    if (!order.requiredIngredients.includes(ingredientId)) return
-    if (!run.inventory.some((ing) => ing.id === ingredientId)) return
+  // ── Cooking actions ──
 
-    const newInventory = consumeIngredient(ingredientId, run.inventory)
-    const newRevenue = dailyRevenue + order.reward
-    const newRepDelta = dailyReputationDelta + 1
-    const newServedCount = dailyServedCount + 1
-    const nextIdx = currentOrderIdx + 1
-
-    if (nextIdx >= serviceOrders.length) {
-      set({
-        run: { ...run, inventory: newInventory },
-        phase: 'closing',
-        dailyRevenue: newRevenue,
-        dailyReputationDelta: newRepDelta,
-        dailyServedCount: newServedCount,
-        closingSummary: {
-          revenue: newRevenue,
-          reputationDelta: newRepDelta,
-          servedCount: newServedCount,
-          totalOrders: serviceOrders.length,
-        },
-      })
-    } else {
-      set({
-        run: { ...run, inventory: newInventory },
-        currentOrderIdx: nextIdx,
-        orderStartedAt: Date.now(),
-        dailyRevenue: newRevenue,
-        dailyReputationDelta: newRepDelta,
-        dailyServedCount: newServedCount,
-      })
-    }
+  placeRice: () => {
+    const { phase, cookingSession } = get()
+    if (phase !== 'service') return
+    if (cookingSession !== null) return
+    set({ cookingSession: startCooking() })
   },
 
-  timeoutCurrentOrder: () => {
+  placeNetaAction: (ingredientId) => {
     const {
-      run, serviceOrders, currentOrderIdx,
-      dailyRevenue, dailyReputationDelta, dailyServedCount,
+      cookingSession, run, serviceOrders, currentOrderIdx, currentSlotIdx,
+      orderStartedAt, dailyReputationDelta, dailyWalkedOut, closingSummary,
     } = get()
     if (!run) return
 
-    const newRepDelta = dailyReputationDelta - 1
-    const nextIdx = currentOrderIdx + 1
-
-    if (nextIdx >= serviceOrders.length) {
+    // シャリなしでネタ → 順序ミス
+    if (cookingSession === null) {
       set({
+        orderStartedAt: orderStartedAt - MISTAKE_TIME_PENALTY_MS,
+      })
+      applyPatience(set, get, 'mistake')
+      return
+    }
+
+    const ingredient = run.inventory.find((ing) => ing.id === ingredientId)
+    if (!ingredient) return
+
+    const order = serviceOrders[currentOrderIdx]
+    if (!order) return
+    const slot = order.slots[currentSlotIdx]
+    if (!slot) return
+
+    // 合わないネタ → 順序ミス
+    if (!validateSlotMatch(slot, ingredient.tags)) {
+      set({
+        cookingSession: null,
+        orderStartedAt: orderStartedAt - MISTAKE_TIME_PENALTY_MS,
+      })
+      applyPatience(set, get, 'mistake')
+      return
+    }
+
+    // 正しいネタ → セット
+    set({ cookingSession: placeNeta(cookingSession, ingredientId) })
+
+    // 副作用なし: 参照のみで警告を抑制
+    void dailyReputationDelta
+    void dailyWalkedOut
+    void closingSummary
+  },
+
+  serveSushi: () => {
+    const {
+      cookingSession, run, serviceOrders, currentOrderIdx, currentSlotIdx,
+      orderStartedAt, dailyRevenue, dailyReputationDelta, dailyServedSlots,
+      dailyWalkedOut, closingSummary,
+    } = get()
+    if (!run || !cookingSession || cookingSession.netaId === null) return
+
+    const order = serviceOrders[currentOrderIdx]
+    if (!order) return
+    const slot = order.slots[currentSlotIdx]
+    if (!slot) return
+
+    const ingredient = run.inventory.find((ing) => ing.id === cookingSession.netaId)
+    if (!ingredient) return
+
+    // 提供直前の最終チェック（二重安全）
+    if (!validateSlotMatch(slot, ingredient.tags)) return
+
+    const remaining = ORDER_TIME_MS - (Date.now() - orderStartedAt)
+    const ratio = Math.max(0, remaining) / ORDER_TIME_MS
+    const reward = calculateReward(slot.baseReward, ratio)
+
+    const newInventory = consumeIngredient(ingredient.id, run.inventory)
+    const updatedSlot: typeof slot = { ...slot, filledBy: ingredient.id }
+    const updatedSlots = order.slots.map((s, i) => (i === currentSlotIdx ? updatedSlot : s))
+    const updatedOrder: Order = { ...order, slots: updatedSlots }
+    const updatedOrders = updateOrder(serviceOrders, currentOrderIdx, updatedOrder)
+
+    const newRevenue = dailyRevenue + reward
+    const newServedSlots = dailyServedSlots + 1
+    const totalSlots = updatedOrders.reduce((s, o) => s + o.slots.length, 0)
+
+    const next = resolveNext(updatedOrders, currentOrderIdx, currentSlotIdx, false)
+
+    if (next === 'done') {
+      set({
+        run: { ...run, inventory: newInventory },
+        serviceOrders: updatedOrders,
         phase: 'closing',
-        dailyReputationDelta: newRepDelta,
-        closingSummary: {
-          revenue: dailyRevenue,
-          reputationDelta: newRepDelta,
-          servedCount: dailyServedCount,
-          totalOrders: serviceOrders.length,
-        },
+        dailyRevenue: newRevenue,
+        dailyServedSlots: newServedSlots,
+        cookingSession: null,
+        closingSummary: makeClosingSummary(newRevenue, dailyReputationDelta, newServedSlots, totalSlots, dailyWalkedOut),
       })
     } else {
       set({
-        currentOrderIdx: nextIdx,
+        run: { ...run, inventory: newInventory },
+        serviceOrders: updatedOrders,
+        currentOrderIdx: next.orderIdx,
+        currentSlotIdx: next.slotIdx,
         orderStartedAt: Date.now(),
-        dailyReputationDelta: newRepDelta,
+        dailyRevenue: newRevenue,
+        dailyServedSlots: newServedSlots,
+        cookingSession: null,
       })
     }
+
+    // 参照のみ
+    void closingSummary
+  },
+
+  cancelCooking: () => {
+    set({ cookingSession: null })
+  },
+
+  timeoutCurrentSlot: () => {
+    applyPatience(set, get, 'timeout')
   },
 
   confirmClosing: () => {
-    const { run, dailyRevenue, dailyReputationDelta, dailyServedCount, meta } = get()
+    const { run, dailyRevenue, dailyReputationDelta, dailyServedSlots, meta } = get()
     if (!run) return
 
-    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedCount)
+    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedSlots)
     const nextRun = advanceToNextDay(run, log)
 
     if (nextRun.isOver) {
@@ -271,9 +390,13 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
         draftSelectedIds: [],
         serviceOrders: [],
         currentOrderIdx: 0,
+        currentSlotIdx: 0,
+        orderStartedAt: 0,
         dailyRevenue: 0,
         dailyReputationDelta: 0,
-        dailyServedCount: 0,
+        dailyServedSlots: 0,
+        dailyWalkedOut: 0,
+        cookingSession: null,
         closingSummary: null,
       })
     }
@@ -283,3 +406,79 @@ export const useGameStore = create<GameState & StoreExtras & GameActions>((set, 
     set({ phase: 'gameover' })
   },
 }))
+
+// ── 忍耐ペナルティ共通処理 ───────────────────────────────────────────────────
+
+type SetFn = Parameters<Parameters<typeof create>[0]>[0]
+type GetFn = Parameters<Parameters<typeof create>[0]>[1]
+
+function applyPatience(
+  set: SetFn,
+  get: GetFn,
+  reason: 'timeout' | 'mistake',
+) {
+  const {
+    run, serviceOrders, currentOrderIdx, currentSlotIdx,
+    dailyRevenue, dailyReputationDelta, dailyServedSlots, dailyWalkedOut,
+  } = get() as GameState & StoreExtras & GameActions
+
+  if (!run) return
+  const order = serviceOrders[currentOrderIdx]
+  if (!order) return
+
+  const newPatience = order.patience - 1
+  const updatedOrders = updateOrder(serviceOrders, currentOrderIdx, { patience: newPatience })
+  const totalSlots = updatedOrders.reduce((s, o) => s + o.slots.length, 0)
+
+  if (newPatience <= 0) {
+    // 怒り退店
+    const newRepDelta = dailyReputationDelta + WALKOUT_REP_PENALTY
+    const newWalkedOut = dailyWalkedOut + 1
+    const next = resolveNext(updatedOrders, currentOrderIdx, currentSlotIdx, true)
+
+    if (next === 'done') {
+      set({
+        serviceOrders: updatedOrders,
+        phase: 'closing',
+        dailyReputationDelta: newRepDelta,
+        dailyWalkedOut: newWalkedOut,
+        cookingSession: null,
+        closingSummary: makeClosingSummary(dailyRevenue, newRepDelta, dailyServedSlots, totalSlots, newWalkedOut),
+      })
+    } else {
+      set({
+        serviceOrders: updatedOrders,
+        currentOrderIdx: next.orderIdx,
+        currentSlotIdx: next.slotIdx,
+        orderStartedAt: Date.now(),
+        dailyReputationDelta: newRepDelta,
+        dailyWalkedOut: newWalkedOut,
+        cookingSession: null,
+      })
+    }
+    return
+  }
+
+  // 忍耐が残っている場合: 次のスロットへ（or 次の客へ）
+  const repDelta = reason === 'timeout' ? dailyReputationDelta - 1 : dailyReputationDelta
+  const next = resolveNext(updatedOrders, currentOrderIdx, currentSlotIdx, false)
+
+  if (next === 'done') {
+    set({
+      serviceOrders: updatedOrders,
+      phase: 'closing',
+      dailyReputationDelta: repDelta,
+      cookingSession: null,
+      closingSummary: makeClosingSummary(dailyRevenue, repDelta, dailyServedSlots, totalSlots, dailyWalkedOut),
+    })
+  } else {
+    set({
+      serviceOrders: updatedOrders,
+      currentOrderIdx: next.orderIdx,
+      currentSlotIdx: next.slotIdx,
+      orderStartedAt: Date.now(),
+      dailyReputationDelta: repDelta,
+      cookingSession: null,
+    })
+  }
+}

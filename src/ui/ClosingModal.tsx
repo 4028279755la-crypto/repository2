@@ -5,7 +5,7 @@ export default function ClosingModal() {
 
   if (!closingSummary || !run) return null
 
-  const { revenue, reputationDelta, servedCount, totalOrders } = closingSummary
+  const { revenue, reputationDelta, servedSlots, totalSlots, walkedOut } = closingSummary
   const repSign = reputationDelta >= 0 ? '+' : ''
 
   return (
@@ -26,10 +26,13 @@ export default function ClosingModal() {
         {/* 集計 */}
         <div className="flex flex-col gap-3 bg-[#ede5d0] rounded-lg p-4">
           <Row
-            label="接客件数"
-            value={`${servedCount} / ${totalOrders} 件`}
-            highlight={servedCount === totalOrders}
+            label="提供スロット"
+            value={`${servedSlots} / ${totalSlots} 皿`}
+            highlight={servedSlots === totalSlots}
           />
+          {walkedOut > 0 && (
+            <Row label="途中退席" value={`${walkedOut} 客`} danger />
+          )}
           <Row
             label="本日売上"
             value={`¥${revenue.toLocaleString()}`}

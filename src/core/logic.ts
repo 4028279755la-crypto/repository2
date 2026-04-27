@@ -1,4 +1,5 @@
 import type { Ingredient, Order, Customer, RunState, DayLog, Weather } from './types'
+import { MAX_PATIENCE } from './cooking'
 
 export const DRAFT_HAND_SIZE = 4
 export const DRAFT_SELECT_MAX = 3
@@ -25,38 +26,26 @@ export function pickDraftHand(pool: Ingredient[], count = DRAFT_HAND_SIZE): Ingr
 }
 
 /**
- * 客の好みタグに一致する食材ならどれでも提供可。
- * wealthy / regular / tourist の3客分のオーダーを生成する。
+ * 今日のオーダーを生成する。
+ * wealthy / regular / tourist の順で3客分。
+ * 各客の orderSlots 定義をそのまま Order.slots に変換する。
  */
-export function generateDayOrders(
-  customers: Customer[],
-  allIngredients: Ingredient[],
-): Order[] {
-  const targets = customers.filter((c) =>
-    (['wealthy', 'regular', 'tourist'] as string[]).includes(c.type),
-  )
-  return targets.map((customer, i) => {
-    const matching = allIngredients.filter((ing) =>
-      ing.tags.some((tag) => customer.preferences.includes(tag)),
-    )
-    const reward =
-      matching.length > 0
-        ? Math.round(matching.reduce((s, ing) => s + ing.sellValue, 0) / matching.length)
-        : 500
-    return {
+export function generateDayOrders(customers: Customer[]): Order[] {
+  const order: Customer['type'][] = ['wealthy', 'regular', 'tourist']
+  return order
+    .map((type) => customers.find((c) => c.type === type))
+    .filter((c): c is Customer => c !== undefined)
+    .map((customer, i) => ({
       id: `order_${customer.id}_${i}`,
       customerId: customer.id,
-      requiredIngredients: matching.map((ing) => ing.id),
+      slots: customer.orderSlots.map((s) => ({
+        requiredTags: s.requiredTags,
+        baseReward: s.baseReward,
+        filledBy: null,
+      })),
       timeLimit: ORDER_TIME_MS,
-      reward,
-      remainingMs: ORDER_TIME_MS,
-    }
-  })
-}
-
-/** 手持ち食材でオーダーを満たせるか（タグ一致） */
-export function canFulfillOrder(order: Order, inventory: Ingredient[]): boolean {
-  return inventory.some((ing) => order.requiredIngredients.includes(ing.id))
+      patience: MAX_PATIENCE,
+    }))
 }
 
 /** 指定食材を1つ消費した新しい inventory を返す */
