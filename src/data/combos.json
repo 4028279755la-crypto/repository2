@@ -1,0 +1,23 @@
+[
+  {
+    "id": "combo_zuke",
+    "name": "漬けマグロ",
+    "requiredTags": ["red_fish", "edomae"],
+    "multiplier": 1.5,
+    "description": "江戸前の伝統技法。醤油に漬けたマグロは旨みが倍増する。"
+  },
+  {
+    "id": "combo_konbu",
+    "name": "昆布締め",
+    "requiredTags": ["white_fish", "edomae", "seasonal"],
+    "multiplier": 1.8,
+    "description": "昆布の旨みが白身魚に移り、上品な味わいに仕上がる。"
+  },
+  {
+    "id": "combo_tokujo",
+    "name": "特上にぎり",
+    "requiredTags": ["luxury", "premium"],
+    "multiplier": 2.5,
+    "description": "最高級食材の組み合わせ。のれん値が大きく上昇する。"
+  }
+]

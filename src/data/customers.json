@@ -1,0 +1,34 @@
+[
+  {
+    "id": "cus_tourist",
+    "type": "tourist",
+    "name": "外国人観光客",
+    "patience": 45000,
+    "budget": 3000,
+    "preferences": ["popular", "seasonal"]
+  },
+  {
+    "id": "cus_regular",
+    "type": "regular",
+    "name": "常連の田中さん",
+    "patience": 90000,
+    "budget": 5000,
+    "preferences": ["edomae", "premium"]
+  },
+  {
+    "id": "cus_wealthy",
+    "type": "wealthy",
+    "name": "富裕層のお客様",
+    "patience": 60000,
+    "budget": 15000,
+    "preferences": ["luxury", "premium", "seasonal"]
+  },
+  {
+    "id": "cus_student",
+    "type": "student",
+    "name": "学生の佐藤くん",
+    "patience": 30000,
+    "budget": 1200,
+    "preferences": ["taishu", "popular"]
+  }
+]

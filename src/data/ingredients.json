@@ -1,0 +1,62 @@
+[
+  {
+    "id": "ing_maguro",
+    "type": "maguro",
+    "name": "マグロ",
+    "rarity": "uncommon",
+    "basePrice": 800,
+    "sellValue": 1200,
+    "effects": ["評判+2"],
+    "tags": ["red_fish", "premium", "edomae"]
+  },
+  {
+    "id": "ing_salmon",
+    "type": "salmon",
+    "name": "サーモン",
+    "rarity": "common",
+    "basePrice": 400,
+    "sellValue": 600,
+    "effects": [],
+    "tags": ["orange_fish", "popular"]
+  },
+  {
+    "id": "ing_hirame",
+    "type": "hirame",
+    "name": "ヒラメ",
+    "rarity": "rare",
+    "basePrice": 1200,
+    "sellValue": 2000,
+    "effects": ["評判+5"],
+    "tags": ["white_fish", "premium", "edomae", "seasonal"]
+  },
+  {
+    "id": "ing_tamago",
+    "type": "tamago",
+    "name": "玉子",
+    "rarity": "common",
+    "basePrice": 100,
+    "sellValue": 180,
+    "effects": [],
+    "tags": ["egg", "taishu", "sweet"]
+  },
+  {
+    "id": "ing_uni",
+    "type": "uni",
+    "name": "ウニ",
+    "rarity": "epic",
+    "basePrice": 2500,
+    "sellValue": 4500,
+    "effects": ["評判+10", "客満足度+20%"],
+    "tags": ["shellfish", "luxury", "edomae", "seasonal"]
+  },
+  {
+    "id": "ing_ika",
+    "type": "ika",
+    "name": "イカ",
+    "rarity": "common",
+    "basePrice": 300,
+    "sellValue": 450,
+    "effects": [],
+    "tags": ["white_fish", "taishu", "chewy"]
+  }
+]
