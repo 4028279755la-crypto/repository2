@@ -1,92 +1,285 @@
 import { create } from 'zustand'
-import type { GameState, Ingredient, RunState, MetaState } from '../core/types'
+import type { GameState, Ingredient, RunState, MetaState, Order, Customer } from '../core/types'
 import ingredientsData from '../data/ingredients.json'
+import customersData from '../data/customers.json'
+import {
+  pickDraftHand,
+  generateDayOrders,
+  consumeIngredient,
+  buildDayLog,
+  advanceToNextDay,
+  DRAFT_SELECT_MAX,
+  STARTING_CASH,
+  STARTING_REPUTATION,
+} from '../core/logic'
+
+const allIngredients = ingredientsData as unknown as Ingredient[]
+const allCustomers = customersData as unknown as Customer[]
 
 const defaultMeta: MetaState = {
   norenValue: 0,
   unlockedShops: ['shop_default'],
-  unlockedIngredients: ['ing_maguro', 'ing_salmon', 'ing_hirame', 'ing_tamago', 'ing_uni', 'ing_ika'],
+  unlockedIngredients: allIngredients.map((i) => i.id),
   unlockedCombos: [],
   hiredApprentices: [],
-  permanentBuffs: {
-    startingCash: 0,
-    startingHandSize: 0,
-    maxStamina: 100,
-  },
-  records: {
-    bestRevenue: 0,
-    totalRuns: 0,
-    completedSeasons: 0,
-  },
+  permanentBuffs: { startingCash: 0, startingHandSize: 0, maxStamina: 100 },
+  records: { bestRevenue: 0, totalRuns: 0, completedSeasons: 0 },
 }
 
-const mockRun: RunState = {
-  currentDay: 12,
-  shopId: 'shop_default',
-  cash: 15400,
-  reputation: 60,
-  inventory: ingredientsData as Ingredient[],
-  unlockedCombos: ['combo_zuke'],
-  history: [
-    {
-      dayNumber: 11,
-      season: '春',
-      weather: 'sunny',
-      customersServed: 8,
-      revenue: 12300,
-      reputationDelta: 3,
-    },
-  ],
-  isOver: false,
+function makeNewRun(): RunState {
+  return {
+    currentDay: 1,
+    shopId: 'shop_default',
+    cash: STARTING_CASH,
+    reputation: STARTING_REPUTATION,
+    inventory: [],
+    unlockedCombos: [],
+    history: [],
+    isOver: false,
+  }
+}
+
+export interface ClosingSummary {
+  revenue: number
+  reputationDelta: number
+  servedCount: number
+  totalOrders: number
+}
+
+interface StoreExtras {
+  /** 朝市で表示される候補カード */
+  draftHand: Ingredient[]
+  /** 選択中の食材ID */
+  draftSelectedIds: string[]
+
+  /** 本日の全オーダー */
+  serviceOrders: Order[]
+  /** 現在処理中のオーダーインデックス */
+  currentOrderIdx: number
+  /** 現在のオーダーが開始された timestamp */
+  orderStartedAt: number
+  /** 本日の累計売上 */
+  dailyRevenue: number
+  /** 本日の評判変動 */
+  dailyReputationDelta: number
+  /** 本日の提供成功件数 */
+  dailyServedCount: number
+
+  /** 締めフェーズ用サマリー */
+  closingSummary: ClosingSummary | null
 }
 
 interface GameActions {
   startNewRun: () => void
-  selectIngredient: (ingredientId: string) => void
-  advanceDay: () => void
+  toggleDraftCard: (ingredientId: string) => void
+  confirmDraft: () => void
+  serveCurrentOrder: (ingredientId: string) => void
+  timeoutCurrentOrder: () => void
+  confirmClosing: () => void
   endRun: () => void
 }
 
-export const useGameStore = create<GameState & GameActions>((set) => ({
+const initialRun = makeNewRun()
+
+export const useGameStore = create<GameState & StoreExtras & GameActions>((set, get) => ({
+  // ── GameState ──
   phase: 'morning_market',
-  run: mockRun,
+  run: initialRun,
   meta: defaultMeta,
 
+  // ── Draft state ──
+  draftHand: pickDraftHand(allIngredients),
+  draftSelectedIds: [],
+
+  // ── Service state ──
+  serviceOrders: [],
+  currentOrderIdx: 0,
+  orderStartedAt: 0,
+  dailyRevenue: 0,
+  dailyReputationDelta: 0,
+  dailyServedCount: 0,
+
+  // ── Closing state ──
+  closingSummary: null,
+
+  // ── Actions ──
+
   startNewRun: () => {
-    // TODO: 新しいランを初期化してフェーズを morning_market に移行する
-    set((state) => ({
-      run: mockRun,
+    const run = makeNewRun()
+    set((s) => ({
+      run,
+      phase: 'morning_market',
+      draftHand: pickDraftHand(allIngredients),
+      draftSelectedIds: [],
+      serviceOrders: [],
+      currentOrderIdx: 0,
+      dailyRevenue: 0,
+      dailyReputationDelta: 0,
+      dailyServedCount: 0,
+      closingSummary: null,
       meta: {
-        ...state.meta,
+        ...s.meta,
         records: {
-          ...state.meta.records,
-          totalRuns: state.meta.records.totalRuns + 1,
+          ...s.meta.records,
+          totalRuns: s.meta.records.totalRuns + 1,
         },
       },
-      phase: 'morning_market',
     }))
   },
 
-  selectIngredient: (_id: string) => {
-    // TODO: 朝市フェーズで食材を選択し手持ちに加える
+  toggleDraftCard: (id) => {
+    const { draftSelectedIds, draftHand, run } = get()
+    if (!run) return
+
+    const isSelected = draftSelectedIds.includes(id)
+    if (isSelected) {
+      set({ draftSelectedIds: draftSelectedIds.filter((sid) => sid !== id) })
+      return
+    }
+    if (draftSelectedIds.length >= DRAFT_SELECT_MAX) return
+
+    const card = draftHand.find((ing) => ing.id === id)
+    if (!card) return
+    const usedBudget = draftHand
+      .filter((ing) => draftSelectedIds.includes(ing.id))
+      .reduce((sum, ing) => sum + ing.basePrice, 0)
+    if (usedBudget + card.basePrice > run.cash) return
+
+    set({ draftSelectedIds: [...draftSelectedIds, id] })
   },
 
-  advanceDay: () => {
-    // TODO: 営業フェーズを終了して翌日の朝市フェーズへ進む
-    // TODO: DayLog を history に追記し cash / reputation を更新する
-    set((state) => {
-      if (!state.run) return {}
-      return {
-        run: {
-          ...state.run,
-          currentDay: state.run.currentDay + 1,
-        },
-      }
+  confirmDraft: () => {
+    const { run, draftHand, draftSelectedIds } = get()
+    if (!run || draftSelectedIds.length < DRAFT_SELECT_MAX) return
+
+    const selected = draftHand.filter((ing) => draftSelectedIds.includes(ing.id))
+    const cost = selected.reduce((sum, ing) => sum + ing.basePrice, 0)
+    const orders = generateDayOrders(allCustomers, allIngredients)
+
+    set({
+      run: { ...run, inventory: selected, cash: run.cash - cost },
+      phase: 'service',
+      serviceOrders: orders,
+      currentOrderIdx: 0,
+      orderStartedAt: Date.now(),
+      dailyRevenue: 0,
+      dailyReputationDelta: 0,
+      dailyServedCount: 0,
     })
   },
 
+  serveCurrentOrder: (ingredientId) => {
+    const {
+      run, serviceOrders, currentOrderIdx,
+      dailyRevenue, dailyReputationDelta, dailyServedCount,
+    } = get()
+    if (!run) return
+    const order = serviceOrders[currentOrderIdx]
+    if (!order) return
+    if (!order.requiredIngredients.includes(ingredientId)) return
+    if (!run.inventory.some((ing) => ing.id === ingredientId)) return
+
+    const newInventory = consumeIngredient(ingredientId, run.inventory)
+    const newRevenue = dailyRevenue + order.reward
+    const newRepDelta = dailyReputationDelta + 1
+    const newServedCount = dailyServedCount + 1
+    const nextIdx = currentOrderIdx + 1
+
+    if (nextIdx >= serviceOrders.length) {
+      set({
+        run: { ...run, inventory: newInventory },
+        phase: 'closing',
+        dailyRevenue: newRevenue,
+        dailyReputationDelta: newRepDelta,
+        dailyServedCount: newServedCount,
+        closingSummary: {
+          revenue: newRevenue,
+          reputationDelta: newRepDelta,
+          servedCount: newServedCount,
+          totalOrders: serviceOrders.length,
+        },
+      })
+    } else {
+      set({
+        run: { ...run, inventory: newInventory },
+        currentOrderIdx: nextIdx,
+        orderStartedAt: Date.now(),
+        dailyRevenue: newRevenue,
+        dailyReputationDelta: newRepDelta,
+        dailyServedCount: newServedCount,
+      })
+    }
+  },
+
+  timeoutCurrentOrder: () => {
+    const {
+      run, serviceOrders, currentOrderIdx,
+      dailyRevenue, dailyReputationDelta, dailyServedCount,
+    } = get()
+    if (!run) return
+
+    const newRepDelta = dailyReputationDelta - 1
+    const nextIdx = currentOrderIdx + 1
+
+    if (nextIdx >= serviceOrders.length) {
+      set({
+        phase: 'closing',
+        dailyReputationDelta: newRepDelta,
+        closingSummary: {
+          revenue: dailyRevenue,
+          reputationDelta: newRepDelta,
+          servedCount: dailyServedCount,
+          totalOrders: serviceOrders.length,
+        },
+      })
+    } else {
+      set({
+        currentOrderIdx: nextIdx,
+        orderStartedAt: Date.now(),
+        dailyReputationDelta: newRepDelta,
+      })
+    }
+  },
+
+  confirmClosing: () => {
+    const { run, dailyRevenue, dailyReputationDelta, dailyServedCount, meta } = get()
+    if (!run) return
+
+    const log = buildDayLog(run, dailyRevenue, dailyReputationDelta, dailyServedCount)
+    const nextRun = advanceToNextDay(run, log)
+
+    if (nextRun.isOver) {
+      set({
+        run: nextRun,
+        phase: 'gameover',
+        closingSummary: null,
+        meta: {
+          ...meta,
+          norenValue: meta.norenValue + nextRun.reputation,
+          records: {
+            ...meta.records,
+            bestRevenue: Math.max(meta.records.bestRevenue, dailyRevenue),
+            completedSeasons: meta.records.completedSeasons + 1,
+          },
+        },
+      })
+    } else {
+      set({
+        run: nextRun,
+        phase: 'morning_market',
+        draftHand: pickDraftHand(allIngredients),
+        draftSelectedIds: [],
+        serviceOrders: [],
+        currentOrderIdx: 0,
+        dailyRevenue: 0,
+        dailyReputationDelta: 0,
+        dailyServedCount: 0,
+        closingSummary: null,
+      })
+    }
+  },
+
   endRun: () => {
-    // TODO: ラン終了処理。MetaState の records を更新し phase を gameover に変える
-    set({ phase: 'gameover', run: null })
+    set({ phase: 'gameover' })
   },
 }))
