@@ -1,6 +1,6 @@
 import React from 'react'
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface IngredientSpriteProps {
   ingredientId: string
@@ -11,15 +11,7 @@ interface IngredientSpriteProps {
 type SpriteData = { p: string[]; r: string[] }
 type PixelRect = { x: number; y: number; c: string }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-// Center a pattern string within a 16-char row, padding with '.' on both sides
-function pad(s: string): string {
-  if (s.length >= 16) return s.slice(0, 16)
-  const total = 16 - s.length
-  const l = Math.floor(total / 2)
-  return '.'.repeat(l) + s + '.'.repeat(total - l)
-}
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function buildRects(sprite: SpriteData): PixelRect[] {
   const result: PixelRect[] = []
@@ -37,291 +29,305 @@ function buildRects(sprite: SpriteData): PixelRect[] {
   return result
 }
 
-// ── Sprite definitions (16 rows × 16 cols) ───────────────────────────────────
-// Palette slots: '0'–'f' hex index, '.' = transparent
+// Row helpers — every string must be exactly 16 chars
+// n(s) pads an 11-char neta row:  '..' + s + '...'  (2+11+3=16)
+const n = (s: string) => '..' + s + '...'
+// g(s) pads a 13-char gunkan row: '.' + s + '..'    (1+13+2=16)
+const g = (s: string) => '.' + s + '..'
+
+// ── Shared rows ───────────────────────────────────────────────────────────────
+// '3' = shari edge (#c8b89a), '4' = shari white (#fffff0) in EVERY nigiri palette
+
+const EM = '................'          // empty row (16 dots)
+const S7 = '.3333333333333..'          // shari top edge  (13 wide, x=1..13)
+const S8 = '..344444444443..'          // shari body      (12 wide, x=2..13, 10 whites)
+const SC = '..333333333333..'          // shari close     (12 wide)
+const SN = '...3333333333...'          // shari narrow    (10 wide)
+
+// Gunkan nori/rice shared rows (UNI/IKURA)
+// '1'=nori, '2'=shari edge, '3'=shari white in gunkan palettes
+const GB = g('1233333333321')          // gunkan body row (nori|rice inside|nori) ×7
+const GN = g('1111111111111')          // gunkan nori base (full-width)
+const GF = '...111111111...'           // gunkan foot (narrow nori, 3+9+4=16)
+
+// ── Sprite definitions ────────────────────────────────────────────────────────
+// Layout for NIGIRI: [EM,EM, neta×5, S7, S8×4, SC, SN, EM,EM, EM]
+// Layout for GUNKAN: [EM, top×4, body×7, GN, GF, EM,EM, EM]
+// Palette: p[3]=#c8b89a, p[4]=#fffff0 (shari) for all NIGIRI sprites
 
 const SPRITE_DATA: Record<string, SpriteData> = {
-  // ── Tuna (マグロ) — deep red slab ──
+
+  // ── マグロ (tuna) — deep red with dark veins ───────────────────────────────
   maguro: {
-    p: ['#7b241c', '#c0392b', '#e74c3c'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01111111110'),
-      pad('01100111110'),
-      pad('01001011110'),
-      pad('01001011110'),
-      pad('01100111110'),
-      pad('01111111110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#7b241c', '#c0392b', '#e74c3c', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01100011110'),  // vein at x=4,5
+      n('01001101110'),  // crossing veins
+      n('01100011110'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Salmon (サーモン) — orange with diagonal streaks ──
+  // ── サーモン (salmon) — orange with diagonal fat streaks ──────────────────
   salmon: {
-    p: ['#d35400', '#e67e22', '#f39c12'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01212121110'),
-      pad('01121212110'),
-      pad('01212121110'),
-      pad('01121212110'),
-      pad('01212121110'),
-      pad('01121212110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#d35400', '#e67e22', '#f39c12', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01212121210'),  // fat streaks
+      n('01121212110'),
+      n('01212121210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Flounder (ヒラメ) — pale white with subtle marks ──
+  // ── ヒラメ (flounder) — pale white ────────────────────────────────────────
   hirame: {
-    p: ['#7f8c8d', '#bdc3c7', '#d5d8dc', '#ecf0f1'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01233321110'),
-      pad('01233321110'),
-      pad('01222222110'),
-      pad('01222222110'),
-      pad('01233321110'),
-      pad('01233321110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#7f8c8d', '#bdc3c7', '#d5d8dc', '#c8b89a', '#fffff0', '#ecf0f1'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01255552210'),  // almost-white interior (5=lightest)
+      n('01522222510'),
+      n('01255552210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Egg omelette (玉子) — bright yellow rectangle ──
+  // ── 玉子 (egg) — yellow with nori band ───────────────────────────────────
   tamago: {
-    p: ['#c49a06', '#f1c40f', '#f7dc6f'],
-    r: [
-      pad(''),
-      pad('00000000000'),
-      pad('01111111110'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01222222210'),
-      pad('01111111110'),
-      pad('00000000000'),
-      pad(''), pad(''), pad(''),
-    ],
+    p: ['#c49a06', '#f1c40f', '#f7dc6f', '#c8b89a', '#fffff0', '#1a3a10'],
+    r: [EM, EM,
+      n('01222222210'),
+      n('01222222210'),
+      n('05555555550'),  // nori band (5=dark green)
+      n('01222222210'),
+      n('01222222210'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Sea urchin (ウニ) — spiky orange-gold cluster ──
+  // ── ウニ (uni) — gunkan: orange-gold sea urchin cluster ───────────────────
   uni: {
-    p: ['#d35400', '#e67e22', '#f39c12', '#f9c840'],
-    r: [
-      pad(''),
-      pad('0.0.0.0.0'),
-      pad('000000000'),
-      pad('022222220'),
-      pad('01222212110'),
-      pad('01221312110'),
-      pad('01213121110'),
-      pad('01221312110'),
-      pad('01222212110'),
-      pad('022222220'),
-      pad('000000000'),
-      pad(''),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#0a1f05', '#1a3a10', '#c8b89a', '#fffff0', '#d35400', '#e67e22', '#f39c12'],
+    r: [EM,
+      g('5665566556655'),  // uni fingers
+      g('6556655665566'),
+      g('5665566556655'),
+      g('4444444444444'),  // dark base of uni
+      GB, GB, GB, GB, GB, GB, GB,
+      GN, GF, EM, EM],
   },
 
-  // ── Squid (イカ) — near-white with faint markings ──
+  // ── イカ (squid) — near-white with faint surface marks ───────────────────
   ika: {
-    p: ['#7f8c8d', '#b2babb', '#d5d8dc', '#ecf0f1'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01233321110'),
-      pad('01322232110'),
-      pad('01232232110'),
-      pad('01232232110'),
-      pad('01322232110'),
-      pad('01233321110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#85929e', '#b2babb', '#d5d8dc', '#c8b89a', '#fffff0', '#ecf0f1'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01255552210'),
+      n('01252255210'),
+      n('01255552210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Conger eel (アナゴ) — caramel-glazed brown crosshatch ──
+  // ── アナゴ (conger eel) — brown with tare glaze crosshatch ───────────────
   anago: {
-    p: ['#3d2006', '#8b4513', '#c8a882'],
-    r: [
-      pad(''), pad(''),
-      pad('00000000000'),
-      pad('012222222210'),
-      pad('012121211210'),
-      pad('012212121210'),
-      pad('012121211210'),
-      pad('012212121210'),
-      pad('012121211210'),
-      pad('012212121210'),
-      pad('012222222210'),
-      pad('00000000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#3d2006', '#8b4513', '#c8a882', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01212121210'),  // crosshatch
+      n('01121212110'),
+      n('01212121210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Shrimp (車エビ) — coral-pink slab ──
+  // ── 車エビ (shrimp) — coral-pink ─────────────────────────────────────────
   ebi: {
-    p: ['#c0392b', '#e07060', '#f4b8b0'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01221222110'),
-      pad('01212122110'),
-      pad('01221222110'),
-      pad('01212122110'),
-      pad('01221222110'),
-      pad('01111122110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#c0392b', '#e07060', '#f4b8b0', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01222111110'),
+      n('01222211110'),
+      n('01222111110'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Salmon roe (いくら) — cluster of red spheres ──
+  // ── いくら (salmon roe) — gunkan: red-orange roe spheres ─────────────────
   ikura: {
-    p: ['#7b241c', '#e74c3c', '#f39c12'],
-    r: [
-      pad(''), pad(''),
-      pad('.00..00.'),
-      pad('01100110'),
-      pad('01200120'),
-      pad('.00..00.'),
-      pad(''),
-      pad('.00..00.'),
-      pad('01100110'),
-      pad('01200120'),
-      pad('.00..00.'),
-      pad(''),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#0a1f05', '#1a3a10', '#c8b89a', '#fffff0', '#7b241c', '#e74c3c', '#f39c12'],
+    r: [EM,
+      g('5554555455545'),  // roe groups (3px per roe)
+      g('5665556655665'),  // roe with highlight
+      g('5554555455545'),
+      g('4444444444444'),  // dark flat base
+      GB, GB, GB, GB, GB, GB, GB,
+      GN, GF, EM, EM],
   },
 
-  // ── Nori (海苔) — dark green seaweed strip ──
+  // ── 海苔 (nori) — dark green sheet on rice ────────────────────────────────
   nori: {
-    p: ['#0a1f05', '#1a3a10', '#2d5a1e'],
-    r: [
-      pad(''), pad(''),
-      pad('00000000000'),
-      pad('01111111110'),
-      pad('01212121210'),
-      pad('01121212110'),
-      pad('01212121210'),
-      pad('01121212110'),
-      pad('01212121210'),
-      pad('01121212110'),
-      pad('01111111110'),
-      pad('00000000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#0a1f05', '#1a3a10', '#2d5a1e', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('00000000000'),
+      n('01222222210'),
+      n('01221122210'),
+      n('01222222210'),
+      n('00000000000'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Cucumber (きゅうり) — green cross-section with seeds ──
+  // ── きゅうり (cucumber) — green cross-section with seeds ──────────────────
   kyuri: {
-    p: ['#1a5e20', '#27ae60', '#82e0aa', '#ffffff'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01233221110'),
-      pad('01323232110'),
-      pad('01232232110'),
-      pad('01232232110'),
-      pad('01323232110'),
-      pad('01233221110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#1a5e20', '#27ae60', '#82e0aa', '#c8b89a', '#fffff0', '#ffffff'],
+    r: [EM, EM,
+      n('00000000000'),
+      n('01252552210'),  // 5=white seeds visible
+      n('01225222210'),
+      n('01252552210'),
+      n('00000000000'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Avocado (アボカド) — green half with brown pit ──
+  // ── アボカド (avocado) — green half with brown pit ────────────────────────
   avocado: {
-    p: ['#1e8449', '#27ae60', '#82e0aa', '#784212', '#c19060'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01222222110'),
-      pad('01223332210'),
-      pad('01234432210'),
-      pad('01234432210'),
-      pad('01223332210'),
-      pad('01222222110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#1e8449', '#27ae60', '#82e0aa', '#c8b89a', '#fffff0', '#784212'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01222222210'),
+      n('01225522210'),  // 5=brown pit
+      n('01222222210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 
-  // ── Fallback for unknown types ──
+  // ── 大トロ (otoro) — fatty tuna with heavy fat marbling ───────────────────
+  otoro: {
+    p: ['#7b241c', '#c0392b', '#e74c3c', '#c8b89a', '#fffff0', '#f5e8e0'],
+    r: [EM, EM,
+      n('01511511110'),  // 5=pale fat (#f5e8e0)
+      n('05115551110'),
+      n('01551155110'),
+      n('05115551110'),
+      n('01511511110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
+  },
+
+  // ── ウニ特上 (premium uni) — vivid orange, gunkan ─────────────────────────
+  uni_premium: {
+    p: ['#0a1f05', '#1a3a10', '#c8b89a', '#fffff0', '#c67c2c', '#f39c12', '#f9c840'],
+    r: [EM,
+      g('6556655665566'),
+      g('5665566556655'),
+      g('6556655665566'),
+      g('4444444444444'),
+      GB, GB, GB, GB, GB, GB, GB,
+      GN, GF, EM, EM],
+  },
+
+  // ── 北海道いくら (hokkaido ikura) — vivid large roe ──────────────────────
+  hokkaido_ikura: {
+    p: ['#0a1f05', '#1a3a10', '#c8b89a', '#fffff0', '#9b1c1c', '#dc2626', '#f87171'],
+    r: [EM,
+      g('5556555655565'),
+      g('5666566656665'),
+      g('5556555655565'),
+      g('4444444444444'),
+      GB, GB, GB, GB, GB, GB, GB,
+      GN, GF, EM, EM],
+  },
+
+  // ── アナゴ高級 (premium anago) — dark glaze with gold tare ───────────────
+  anago_premium: {
+    p: ['#3d2006', '#7d5a30', '#c8a882', '#c8b89a', '#fffff0', '#d4a820'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('05251525210'),  // 5=gold tare highlights
+      n('01515151110'),
+      n('05251525210'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
+  },
+
+  // ── 昆布締めヒラメ (hirame kobujime) — white fish + kombu layer ──────────
+  hirame_kobujime: {
+    p: ['#4a6030', '#8faa60', '#d5d8dc', '#c8b89a', '#fffff0', '#1a3a10'],
+    r: [EM, EM,
+      n('05555555550'),  // kombu strip (5=dark kombu #1a3a10)
+      n('01222222210'),  // white flesh
+      n('01222222210'),
+      n('01222222210'),
+      n('05555555550'),  // kombu strip at bottom
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
+  },
+
+  // ── Fallback for unknown IDs ───────────────────────────────────────────────
   unknown: {
-    p: ['#5c3d1e', '#8b7355', '#c8b89a'],
-    r: [
-      pad(''), pad(''),
-      pad('0000000'),
-      pad('011111110'),
-      pad('01222222110'),
-      pad('01221122110'),
-      pad('01222212110'),
-      pad('01222112110'),
-      pad('01222212110'),
-      pad('01222222110'),
-      pad('011111110'),
-      pad('0000000'),
-      pad(''), pad(''), pad(''), pad(''),
-    ],
+    p: ['#5c3d1e', '#8b7355', '#c8b89a', '#c8b89a', '#fffff0'],
+    r: [EM, EM,
+      n('01111111110'),
+      n('01111111110'),
+      n('01111111110'),
+      n('01111111110'),
+      n('01111111110'),
+      S7, S8, S8, S8, S8, SC, SN, EM, EM],
   },
 }
 
-// Map ingredient IDs and type names to sprite keys
+// ── ID → sprite key mapping ───────────────────────────────────────────────────
+
 const SPRITE_KEY: Record<string, string> = {
-  ing_maguro:  'maguro',  maguro:  'maguro',
-  ing_salmon:  'salmon',  salmon:  'salmon',
-  ing_hirame:  'hirame',  hirame:  'hirame',
-  ing_tamago:  'tamago',  tamago:  'tamago',
-  ing_uni:     'uni',     uni:     'uni',
-  ing_ika:     'ika',     ika:     'ika',
-  ing_anago:   'anago',   anago:   'anago',
-  ing_ebi:     'ebi',     ebi:     'ebi',
-  ing_ikura:   'ikura',   ikura:   'ikura',
-  ing_nori:    'nori',    nori:    'nori',
-  ing_kyuri:   'kyuri',   kyuri:   'kyuri',
-  ing_avocado: 'avocado', avocado: 'avocado',
+  // Standard ingredients (by ID and type)
+  ing_maguro:  'maguro',   maguro:  'maguro',
+  ing_salmon:  'salmon',   salmon:  'salmon',
+  ing_hirame:  'hirame',   hirame:  'hirame',
+  ing_tamago:  'tamago',   tamago:  'tamago',
+  ing_uni:     'uni',      uni:     'uni',
+  ing_ika:     'ika',      ika:     'ika',
+  ing_anago:   'anago',    anago:   'anago',
+  ing_ebi:     'ebi',      ebi:     'ebi',
+  ing_ikura:   'ikura',    ikura:   'ikura',
+  ing_nori:    'nori',     nori:    'nori',
+  ing_kyuri:   'kyuri',    kyuri:   'kyuri',
+  ing_avocado: 'avocado',  avocado: 'avocado',
+  // Premium / unlock-exclusive
+  ing_otoro:            'otoro',
+  ing_uni_premium:      'uni_premium',
+  ing_hokkaido_ikura:   'hokkaido_ikura',
+  ing_anago_premium:    'anago_premium',
+  ing_hirame_kobujime:  'hirame_kobujime',
 }
+
+// Ingredients that receive the gold-border treatment
+const GOLD_IDS = new Set([
+  'ing_anago', 'ing_ikura', 'ing_uni', 'ing_hirame', 'ing_avocado',
+  'ing_otoro', 'ing_uni_premium', 'ing_hokkaido_ikura',
+  'ing_anago_premium', 'ing_hirame_kobujime',
+])
+
+// Gold border dot positions (8 points around the 16×16 perimeter)
+const GOLD_DOTS: Array<{ x: number; y: number }> = [
+  { x: 0,  y: 0  }, { x: 7,  y: 0  }, { x: 15, y: 0  },
+  { x: 0,  y: 7  },                    { x: 15, y: 7  },
+  { x: 0,  y: 15 }, { x: 7,  y: 15 }, { x: 15, y: 15 },
+]
+const GOLD_COLOR = '#f0c040'
 
 // Pre-compute pixel rect lists once at module load
 const SPRITE_RECTS: Record<string, PixelRect[]> = Object.fromEntries(
   Object.entries(SPRITE_DATA).map(([k, d]) => [k, buildRects(d)])
 )
 
-// ── IngredientSprite ─────────────────────────────────────────────────────────
+// ── IngredientSprite ──────────────────────────────────────────────────────────
 
 export const IngredientSprite = React.memo(function IngredientSprite({
   ingredientId,
-  size = 48,
+  size = 64,
   className,
 }: IngredientSpriteProps) {
   const key = SPRITE_KEY[ingredientId] ?? 'unknown'
-  const rects = SPRITE_RECTS[key]
+  const rects = SPRITE_RECTS[key] ?? SPRITE_RECTS.unknown
+  const showGold = GOLD_IDS.has(ingredientId)
 
   return (
     <svg
@@ -335,41 +341,43 @@ export const IngredientSprite = React.memo(function IngredientSprite({
       {rects.map((px) => (
         <rect key={`${px.x}-${px.y}`} x={px.x} y={px.y} width={1} height={1} fill={px.c} />
       ))}
+      {showGold && GOLD_DOTS.map((d) => (
+        <rect key={`g-${d.x}-${d.y}`} x={d.x} y={d.y} width={1} height={1} fill={GOLD_COLOR} />
+      ))}
     </svg>
   )
 })
 
-// ── WipSushiSprite ───────────────────────────────────────────────────────────
-// Shows a nigiri in progress: ingredient pixels on top of a white rice oval.
+// ── WipSushiSprite ────────────────────────────────────────────────────────────
+// Composite view: ingredient sprite stacked above a rice oval.
 
 export const WipSushiSprite = React.memo(function WipSushiSprite({
   ingredientId,
-  size = 48,
+  size = 64,
   className,
 }: IngredientSpriteProps) {
   const key = SPRITE_KEY[ingredientId] ?? 'unknown'
-  const rects = SPRITE_RECTS[key]
-
-  // Crop: show only rows 2–11 of the ingredient sprite (the actual food portion)
-  const topRects = rects.filter((px) => px.y >= 2 && px.y <= 11)
+  const rects = SPRITE_RECTS[key] ?? SPRITE_RECTS.unknown
+  const showGold = GOLD_IDS.has(ingredientId)
 
   return (
     <svg
       width={size}
-      height={Math.round(size * 1.25)}
-      viewBox="0 0 16 20"
+      height={Math.round(size * 1.1)}
+      viewBox="0 0 16 18"
       shapeRendering="crispEdges"
       className={className}
       aria-hidden="true"
     >
-      {/* Rice (shari) oval */}
-      <ellipse cx="8" cy="17" rx="7" ry="3" fill="#fffff0" stroke="#c8b89a" strokeWidth="0.5" />
-      {/* Plate rim */}
-      <ellipse cx="8" cy="18" rx="8" ry="2" fill="none" stroke="#d5c9a0" strokeWidth="0.4" />
-      {/* Ingredient pixels offset down by 2 rows to sit on the rice */}
-      {topRects.map((px) => (
+      {/* Ingredient sprite sits at y=0..15 */}
+      {rects.map((px) => (
         <rect key={`${px.x}-${px.y}`} x={px.x} y={px.y} width={1} height={1} fill={px.c} />
       ))}
+      {showGold && GOLD_DOTS.map((d) => (
+        <rect key={`g-${d.x}-${d.y}`} x={d.x} y={d.y} width={1} height={1} fill={GOLD_COLOR} />
+      ))}
+      {/* Plate rim at y=16..17 */}
+      <ellipse cx="8" cy="17" rx="8" ry="1.5" fill="#e8e0c0" stroke="#c8b89a" strokeWidth="0.3" />
     </svg>
   )
 })

@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useGameStore, getAllCombos } from '../store/gameStore'
 import { INGREDIENT_UNLOCKS, BUFF_UNLOCKS, COMBO_UNLOCK_COSTS, nextBuffCost } from '../core/unlocks'
 import { ALL_SHOPS } from '../core/shops'
 import { ALL_SCHOOLS } from '../core/schools'
 import type { PermanentBuffs } from '../core/types'
+import { IngredientSprite } from '../render/IngredientSprite'
 
 type Tab = 'ingredient' | 'combo' | 'shop' | 'school' | 'buff'
 
@@ -77,6 +78,7 @@ export default function UnlockScreen() {
                     unlocked={unlocked}
                     affordable={affordable}
                     onClick={() => confirmPurchase(u.name, u.cost, () => purchaseIngredientUnlock(u.id))}
+                    preview={<IngredientSprite ingredientId={u.id} size={32} />}
                   />
                 )
               })}
@@ -213,9 +215,10 @@ export default function UnlockScreen() {
 }
 
 function UnlockCard({
-  title, desc, cost, unlocked, affordable, onClick,
+  title, desc, cost, unlocked, affordable, onClick, preview,
 }: {
   title: string; desc: string; cost: number; unlocked: boolean; affordable: boolean; onClick: () => void
+  preview?: React.ReactNode
 }) {
   return (
     <div
@@ -229,7 +232,10 @@ function UnlockCard({
       ].join(' ')}
     >
       <div className="flex items-center justify-between w-full">
-        <span className="font-bold text-[#f5f0e8] text-sm">{title}</span>
+        <div className="flex items-center gap-2">
+          {preview}
+          <span className="font-bold text-[#f5f0e8] text-sm">{title}</span>
+        </div>
         <span className={`text-xs font-bold ${unlocked ? 'text-[#2ecc71]' : 'text-[#e67e22]'}`}>
           {unlocked ? '✓ 解放済み' : `のれん${cost}`}
         </span>
