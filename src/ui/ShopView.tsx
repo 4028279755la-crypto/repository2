@@ -3,6 +3,7 @@ import { useGameStore } from '../store/gameStore'
 import type { Ingredient } from '../core/types'
 import type { ComboFlash } from '../store/gameStore'
 import ingredientsData from '../data/ingredients.json'
+import { getIngredientArt } from '../data/ingredient-art'
 
 const allIngredients = ingredientsData as unknown as Ingredient[]
 
@@ -25,29 +26,47 @@ function WipPlate({ netaIds }: { netaIds: string[] }) {
       <ellipse cx="0" cy="5" rx="30" ry="10" fill="#f5f0e8" stroke="#c8b89a" strokeWidth="1.5" />
       {/* シャリ */}
       <ellipse cx="0" cy="1" rx="18" ry="7" fill="#fffff0" stroke="#e8e0d0" strokeWidth="1" />
-      {/* ネタ（最大3層に積む） */}
-      {netas.map((neta, i) => {
-        const yOffset = -6 - i * 4
-        return (
-          <g key={i}>
-            <rect
-              x="-13"
-              y={yOffset}
-              width="26"
-              height="6"
-              rx="2"
-              fill={getNetaColor(neta.type)}
-              stroke="#00000022"
-              strokeWidth="0.5"
+      {/* ネタ（PNG 画像。PNG がない場合はカラーフォールバック） */}
+      {netas.length > 0 && (() => {
+        const count = netas.length
+        const imgSize = count === 1 ? 26 : count === 2 ? 20 : 15
+        const gap = 2
+        const totalW = count * imgSize + (count - 1) * gap
+        const startX = -totalW / 2
+        const imgY = -imgSize - 4  // 皿より上に配置
+
+        return netas.map((neta, i) => {
+          const artPath = getIngredientArt(neta.id)
+          const x = startX + i * (imgSize + gap)
+          return artPath ? (
+            <image
+              key={neta.id}
+              href={artPath}
+              x={x}
+              y={imgY}
+              width={imgSize}
+              height={imgSize}
+              style={{ imageRendering: 'pixelated' } as React.CSSProperties}
             />
-            {i === 0 && (
-              <text x="0" y={yOffset + 4.5} textAnchor="middle" fontSize="5" fill="#ffffff" fontWeight="bold">
+          ) : (
+            <g key={neta.id}>
+              <rect
+                x={x}
+                y={imgY}
+                width={imgSize}
+                height={imgSize - 2}
+                rx="2"
+                fill={getNetaColor(neta.type)}
+                stroke="#00000022"
+                strokeWidth="0.5"
+              />
+              <text x={x + imgSize / 2} y={imgY + (imgSize - 2) / 2 + 2} textAnchor="middle" fontSize="4" fill="#ffffff">
                 {neta.name}
               </text>
-            )}
-          </g>
-        )
-      })}
+            </g>
+          )
+        })
+      })()}
       {/* WIPラベル */}
       <text x="0" y="22" textAnchor="middle" fontSize="6" fill="#8b7355">
         {netas.length === 0

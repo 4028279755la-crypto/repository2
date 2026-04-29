@@ -16,9 +16,18 @@ body,
 
 /* ピクセルアート素材用 */
 svg,
-img.pixel {
+img.pixel,
+img.pixel-art {
   image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
+  object-fit: contain;
+}
+
+.pixel-art-fallback {
+  background: #d4cdb8;
+  border: 2px dashed #8b7355;
+  border-radius: 4px;
 }
 
 /* ─── カスタムアニメーション ──────────────────────────────────────────────── */

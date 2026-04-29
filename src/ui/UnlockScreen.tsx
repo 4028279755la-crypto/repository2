@@ -4,7 +4,7 @@ import { INGREDIENT_UNLOCKS, BUFF_UNLOCKS, COMBO_UNLOCK_COSTS, nextBuffCost } fr
 import { ALL_SHOPS } from '../core/shops'
 import { ALL_SCHOOLS } from '../core/schools'
 import type { PermanentBuffs } from '../core/types'
-import { IngredientSprite } from '../render/IngredientSprite'
+import { IngredientImage } from '../render/IngredientImage'
 
 type Tab = 'ingredient' | 'combo' | 'shop' | 'school' | 'buff'
 
@@ -78,7 +78,7 @@ export default function UnlockScreen() {
                     unlocked={unlocked}
                     affordable={affordable}
                     onClick={() => confirmPurchase(u.name, u.cost, () => purchaseIngredientUnlock(u.id))}
-                    preview={<IngredientSprite ingredientId={u.id} size={32} />}
+                    preview={<IngredientImage ingredientId={u.id} size={48} />}
                   />
                 )
               })}

@@ -1,7 +1,7 @@
 import { useGameStore, listAvailableCombos, getAllCombos } from '../store/gameStore'
 import type { Ingredient, Rarity, Combo, Customer } from '../core/types'
 import { DRAFT_SELECT_MAX } from '../core/logic'
-import { IngredientSprite } from '../render/IngredientSprite'
+import { IngredientImage } from '../render/IngredientImage'
 import { validateSlotMatch, MAX_NETAS_PER_SESSION } from '../core/cooking'
 import customersData from '../data/customers.json'
 
@@ -49,7 +49,7 @@ function DraftCard({
         <span className={`text-[10px] font-bold ${selected ? 'text-[#c8b89a]' : style.labelColor}`}>{style.label}</span>
         <span className={`text-[10px] ${selected ? 'text-[#f0d060]' : 'text-[#8b7355]'}`}>¥{ingredient.basePrice.toLocaleString()}</span>
       </div>
-      <div className="flex items-center justify-center py-1"><IngredientSprite ingredientId={ingredient.id} size={48} /></div>
+      <div className="flex items-center justify-center py-1"><IngredientImage ingredientId={ingredient.id} size={64} /></div>
       <div className={`text-center font-bold text-sm ${selected ? 'text-[#f0d060]' : 'text-[#2c1a0e]'}`}>{ingredient.name}</div>
       {ingredient.tags.length > 0 && (
         <div className="flex flex-wrap gap-0.5 justify-center">
@@ -167,7 +167,7 @@ function NetaCard({
           : `${style.border} ${style.bg} cursor-pointer hover:scale-105`,
       ].join(' ')}
     >
-      <div className="flex items-center justify-center py-1"><IngredientSprite ingredientId={ingredient.id} size={40} /></div>
+      <div className="flex items-center justify-center py-1"><IngredientImage ingredientId={ingredient.id} size={48} /></div>
       <div className={`text-center font-bold text-xs ${isPlaced ? 'text-[#f0d060]' : 'text-[#2c1a0e]'}`}>{ingredient.name}</div>
       {ingredient.tags.length > 0 && (
         <div className="flex flex-wrap gap-0.5 justify-center">

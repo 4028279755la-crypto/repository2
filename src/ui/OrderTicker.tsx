@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useGameStore } from '../store/gameStore'
 import { ORDER_TIME_MS } from '../core/logic'
-import { IngredientSprite } from '../render/IngredientSprite'
+import { IngredientImage } from '../render/IngredientImage'
 import { MAX_PATIENCE } from '../core/cooking'
 import type { Customer, Ingredient, OrderSlot } from '../core/types'
 import customersData from '../data/customers.json'
@@ -55,10 +55,10 @@ function SlotBadge({
     >
       {filled
         ? (filledIng
-            ? <IngredientSprite ingredientId={filledIng.id} size={24} />
+            ? <IngredientImage ingredientId={filledIng.id} size={28} />
             : <span aria-hidden="true">✓</span>)
         : (repIng
-            ? <IngredientSprite ingredientId={repIng.id} size={24} />
+            ? <IngredientImage ingredientId={repIng.id} size={28} />
             : <span aria-hidden="true">🍣</span>)
       }
       {!filled && <span className="text-[8px]">{tagLabel.slice(0, 4)}</span>}
